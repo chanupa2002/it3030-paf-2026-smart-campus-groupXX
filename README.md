@@ -1,2 +1,2 @@
 # UniNode
-Smart Campus Operations Hub
+Smart Campus Operations Hub is our project
