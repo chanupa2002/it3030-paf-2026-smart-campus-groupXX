@@ -2,6 +2,7 @@ package com.uninode.smartcampus.modules.users.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import com.uninode.smartcampus.common.security.JwtUtils;
 import com.uninode.smartcampus.modules.users.dto.AuthResponse;
@@ -88,6 +89,27 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
+    public AuthResponse handleOAuthLogin(String email, String name) {
+        User user = userRepository.findByEmail(email)
+                .map(existingUser -> {
+                    if (!Boolean.TRUE.equals(existingUser.getActive())) {
+                        throw new DisabledException("User account is inactive");
+                    }
+                    return existingUser;
+                })
+                .orElseGet(() -> createOAuthUser(email, name));
+
+        String token = jwtUtils.generateToken(user);
+        log.info("OAuth login succeeded for user id={} and email={}", user.getUserId(), user.getEmail());
+
+        return AuthResponse.builder()
+                .token(token)
+                .user(toUserResponse(user))
+                .build();
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public UserResponse getUserById(Long id) {
         User user = userRepository.findById(id)
@@ -166,5 +188,54 @@ public class UserServiceImpl implements UserService {
                 .active(user.getActive())
                 .createdAt(user.getCreatedAt())
                 .build();
+    }
+
+    private User createOAuthUser(String email, String name) {
+        UserType defaultUserType = userTypeRepository.findByRoleNameIgnoreCase("Student")
+                .orElseThrow(() -> new IllegalArgumentException("Default OAuth role not found: Student"));
+
+        User user = User.builder()
+                .name(name != null && !name.isBlank() ? name.trim() : deriveNameFromEmail(email))
+                .username(generateUniqueUsername(email))
+                .email(email)
+                .password(passwordEncoder.encode(UUID.randomUUID().toString()))
+                .createdAt(LocalDateTime.now())
+                .active(Boolean.TRUE)
+                .userType(defaultUserType)
+                .build();
+
+        User savedUser = userRepository.save(user);
+        log.info("Created new OAuth user with id={} and email={}", savedUser.getUserId(), savedUser.getEmail());
+        return savedUser;
+    }
+
+    private String generateUniqueUsername(String email) {
+        String localPart = email != null && email.contains("@") ? email.substring(0, email.indexOf('@')) : "oauthuser";
+        String sanitizedBase = localPart.replaceAll("[^A-Za-z0-9_]", "_");
+        if (sanitizedBase.length() < 4) {
+            sanitizedBase = (sanitizedBase + "user").substring(0, 4);
+        }
+        if (sanitizedBase.length() > 50) {
+            sanitizedBase = sanitizedBase.substring(0, 50);
+        }
+
+        String candidate = sanitizedBase;
+        int suffix = 1;
+        while (userRepository.existsByUsername(candidate)) {
+            String suffixValue = "_" + suffix++;
+            int maxBaseLength = 50 - suffixValue.length();
+            String trimmedBase = sanitizedBase.length() > maxBaseLength
+                    ? sanitizedBase.substring(0, maxBaseLength)
+                    : sanitizedBase;
+            candidate = trimmedBase + suffixValue;
+        }
+        return candidate;
+    }
+
+    private String deriveNameFromEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            return "OAuth User";
+        }
+        return email.substring(0, email.indexOf('@'));
     }
 }

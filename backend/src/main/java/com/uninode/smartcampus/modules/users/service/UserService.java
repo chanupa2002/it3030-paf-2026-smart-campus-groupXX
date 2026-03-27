@@ -14,6 +14,8 @@ public interface UserService {
 
     AuthResponse login(LoginRequest request);
 
+    AuthResponse handleOAuthLogin(String email, String name);
+
     UserResponse getUserById(Long id);
 
     List<UserResponse> getAllUsers();

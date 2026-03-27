@@ -1,5 +1,7 @@
 package com.uninode.smartcampus.common.security;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
@@ -73,7 +75,16 @@ public class JwtUtils {
             byte[] keyBytes = Decoders.BASE64.decode(secret);
             return Keys.hmacShaKeyFor(keyBytes);
         } catch (RuntimeException exception) {
-            return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+            return Keys.hmacShaKeyFor(deriveKeyBytes(secret));
+        }
+    }
+
+    private static byte[] deriveKeyBytes(String secret) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return digest.digest(secret.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 algorithm is not available", exception);
         }
     }
 }
