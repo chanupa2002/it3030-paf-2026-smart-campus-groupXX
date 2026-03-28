@@ -1,5 +1,7 @@
 package com.uninode.smartcampus.modules.booking.service;
 
+import java.time.LocalDate;
+
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,5 +42,25 @@ public class BookingSlotService {
                     "No slot found for day '" + day + "' and slot '" + slot + "'.");
         }
         return new SlotIdResponse(slotId);
+    }
+
+    @Transactional(readOnly = true)
+    public Boolean checkDynamicBooking(Long resourceId, Long timeslotId, LocalDate date) {
+        String sql = """
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM "Resource_booking" rb
+                    WHERE rb.resource_id = ?
+                      AND rb.timeslot_id = ?
+                      AND rb.date = ?
+                )
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                rs -> rs.next() ? rs.getBoolean(1) : Boolean.FALSE,
+                resourceId,
+                timeslotId,
+                date);
     }
 }

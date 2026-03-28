@@ -1,5 +1,7 @@
 package com.uninode.smartcampus.modules.booking.controller;
 
+import java.time.LocalDate;
+
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +37,30 @@ public class BookingSlotController {
         }
 
         SlotIdResponse response = bookingSlotService.getSlotIdByTimeDay(normalizedDay, slot);
+        return ResponseEntity
+                .ok()
+                .cacheControl(CacheControl.noStore())
+                .body(response);
+    }
+
+    @GetMapping("/checkDynamicBooking")
+    public ResponseEntity<Boolean> checkDynamicBooking(
+            @RequestParam("resource_id") Long resourceId,
+            @RequestParam("timeslot_id") Long timeslotId,
+            @RequestParam("date") LocalDate date) {
+        if (resourceId == null || resourceId <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Query parameter 'resource_id' must be greater than 0.");
+        }
+        if (timeslotId == null || timeslotId <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Query parameter 'timeslot_id' must be greater than 0.");
+        }
+        if (date == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Query parameter 'date' is required.");
+        }
+
+        Boolean response = bookingSlotService.checkDynamicBooking(resourceId, timeslotId, date);
         return ResponseEntity
                 .ok()
                 .cacheControl(CacheControl.noStore())
