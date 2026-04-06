@@ -77,7 +77,8 @@ public class FacilityCatalogController {
     }
 
     @PostMapping("/createResource")
-    public ResponseEntity<FacilityCatalogItemResponse> createResource(@Valid @RequestBody CreateResourceRequest request) {
+    public ResponseEntity<FacilityCatalogItemResponse> createResource(
+            @Valid @RequestBody CreateResourceRequest request) {
         FacilityCatalogItemResponse response = facilityCatalogService.createResource(request);
         return ResponseEntity
                 .status(HttpStatus.CREATED)

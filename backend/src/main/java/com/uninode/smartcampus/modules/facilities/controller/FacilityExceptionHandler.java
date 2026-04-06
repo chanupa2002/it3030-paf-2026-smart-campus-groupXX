@@ -20,85 +20,85 @@ import com.uninode.smartcampus.modules.facilities.exception.ResourceNotFoundExce
 @RestControllerAdvice(basePackages = "com.uninode.smartcampus.modules.facilities")
 public class FacilityExceptionHandler {
 
-    @ExceptionHandler(ResourceAlreadyExistsException.class)
-    public ResponseEntity<ApiErrorResponse> handleResourceAlreadyExists(
-            ResourceAlreadyExistsException ex,
-            HttpServletRequest request) {
-        ApiErrorResponse response = new ApiErrorResponse(
-                OffsetDateTime.now(),
-                HttpStatus.CONFLICT.value(),
-                HttpStatus.CONFLICT.getReasonPhrase(),
-                ex.getMessage(),
-                request.getRequestURI());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
-    }
+        @ExceptionHandler(ResourceAlreadyExistsException.class)
+        public ResponseEntity<ApiErrorResponse> handleResourceAlreadyExists(
+                        ResourceAlreadyExistsException ex,
+                        HttpServletRequest request) {
+                ApiErrorResponse response = new ApiErrorResponse(
+                                OffsetDateTime.now(),
+                                HttpStatus.CONFLICT.value(),
+                                HttpStatus.CONFLICT.getReasonPhrase(),
+                                ex.getMessage(),
+                                request.getRequestURI());
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        }
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiErrorResponse> handleResourceNotFound(
-            ResourceNotFoundException ex,
-            HttpServletRequest request) {
-        ApiErrorResponse response = new ApiErrorResponse(
-                OffsetDateTime.now(),
-                HttpStatus.NOT_FOUND.value(),
-                HttpStatus.NOT_FOUND.getReasonPhrase(),
-                ex.getMessage(),
-                request.getRequestURI());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-    }
+        @ExceptionHandler(ResourceNotFoundException.class)
+        public ResponseEntity<ApiErrorResponse> handleResourceNotFound(
+                        ResourceNotFoundException ex,
+                        HttpServletRequest request) {
+                ApiErrorResponse response = new ApiErrorResponse(
+                                OffsetDateTime.now(),
+                                HttpStatus.NOT_FOUND.value(),
+                                HttpStatus.NOT_FOUND.getReasonPhrase(),
+                                ex.getMessage(),
+                                request.getRequestURI());
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiErrorResponse> handleValidation(
-            MethodArgumentNotValidException ex,
-            HttpServletRequest request) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .map(err -> err.getField() + ": " + err.getDefaultMessage())
-                .collect(Collectors.joining("; "));
+        @ExceptionHandler(MethodArgumentNotValidException.class)
+        public ResponseEntity<ApiErrorResponse> handleValidation(
+                        MethodArgumentNotValidException ex,
+                        HttpServletRequest request) {
+                String message = ex.getBindingResult().getFieldErrors().stream()
+                                .map(err -> err.getField() + ": " + err.getDefaultMessage())
+                                .collect(Collectors.joining("; "));
 
-        ApiErrorResponse response = new ApiErrorResponse(
-                OffsetDateTime.now(),
-                HttpStatus.BAD_REQUEST.value(),
-                HttpStatus.BAD_REQUEST.getReasonPhrase(),
-                message,
-                request.getRequestURI());
-        return ResponseEntity.badRequest().body(response);
-    }
+                ApiErrorResponse response = new ApiErrorResponse(
+                                OffsetDateTime.now(),
+                                HttpStatus.BAD_REQUEST.value(),
+                                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                                message,
+                                request.getRequestURI());
+                return ResponseEntity.badRequest().body(response);
+        }
 
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<ApiErrorResponse> handleDataIntegrity(
-            DataIntegrityViolationException ex,
-            HttpServletRequest request) {
-        ApiErrorResponse response = new ApiErrorResponse(
-                OffsetDateTime.now(),
-                HttpStatus.CONFLICT.value(),
-                HttpStatus.CONFLICT.getReasonPhrase(),
-                "Resource violates a database constraint (possibly duplicate name).",
-                request.getRequestURI());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
-    }
+        @ExceptionHandler(DataIntegrityViolationException.class)
+        public ResponseEntity<ApiErrorResponse> handleDataIntegrity(
+                        DataIntegrityViolationException ex,
+                        HttpServletRequest request) {
+                ApiErrorResponse response = new ApiErrorResponse(
+                                OffsetDateTime.now(),
+                                HttpStatus.CONFLICT.value(),
+                                HttpStatus.CONFLICT.getReasonPhrase(),
+                                "Resource violates a database constraint (possibly duplicate name).",
+                                request.getRequestURI());
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiErrorResponse> handleIllegalArgument(
-            IllegalArgumentException ex,
-            HttpServletRequest request) {
-        ApiErrorResponse response = new ApiErrorResponse(
-                OffsetDateTime.now(),
-                HttpStatus.BAD_REQUEST.value(),
-                HttpStatus.BAD_REQUEST.getReasonPhrase(),
-                ex.getMessage(),
-                request.getRequestURI());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-    }
+        @ExceptionHandler(IllegalArgumentException.class)
+        public ResponseEntity<ApiErrorResponse> handleIllegalArgument(
+                        IllegalArgumentException ex,
+                        HttpServletRequest request) {
+                ApiErrorResponse response = new ApiErrorResponse(
+                                OffsetDateTime.now(),
+                                HttpStatus.BAD_REQUEST.value(),
+                                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                                ex.getMessage(),
+                                request.getRequestURI());
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
 
-    @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<ApiErrorResponse> handleResponseStatus(
-            ResponseStatusException ex,
-            HttpServletRequest request) {
-        ApiErrorResponse response = new ApiErrorResponse(
-                OffsetDateTime.now(),
-                ex.getStatusCode().value(),
-                ex.getStatusCode().toString(),
-                ex.getReason(),
-                request.getRequestURI());
-        return ResponseEntity.status(ex.getStatusCode()).body(response);
-    }
+        @ExceptionHandler(ResponseStatusException.class)
+        public ResponseEntity<ApiErrorResponse> handleResponseStatus(
+                        ResponseStatusException ex,
+                        HttpServletRequest request) {
+                ApiErrorResponse response = new ApiErrorResponse(
+                                OffsetDateTime.now(),
+                                ex.getStatusCode().value(),
+                                ex.getStatusCode().toString(),
+                                ex.getReason(),
+                                request.getRequestURI());
+                return ResponseEntity.status(ex.getStatusCode()).body(response);
+        }
 }
