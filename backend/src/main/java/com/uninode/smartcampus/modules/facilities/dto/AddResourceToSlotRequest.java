@@ -6,13 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
 public record AddResourceToSlotRequest(
-        @JsonProperty("slot_id")
-        @NotNull(message = "slot_id is required")
-        @Positive(message = "slot_id must be greater than 0")
-        Long slotId,
+                @JsonProperty("slot_id") @NotNull(message = "slot_id is required") @Positive(message = "slot_id must be greater than 0") Long slotId,
 
-        @JsonProperty("resource_id")
-        @NotNull(message = "resource_id is required")
-        @Positive(message = "resource_id must be greater than 0")
-        Long resourceId) {
+                @JsonProperty("resource_id") @NotNull(message = "resource_id is required") @Positive(message = "resource_id must be greater than 0") Long resourceId) {
 }
