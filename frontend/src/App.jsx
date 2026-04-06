@@ -12,6 +12,15 @@ const ROLE_GROUPS = {
   admin: "admin",
 };
 
+const SIDEBAR_ICON_MAP = {
+  "comp-1": "/assets/icons/resources.png",
+  "comp-2": "/assets/icons/my_bookings.png",
+  "comp-3": "/assets/icons/book_resource.png",
+  "comp-4": "/assets/icons/my_tickets.png",
+  "comp-5": "/assets/icons/raise_ticket.png",
+  settings: "/assets/icons/settings.png",
+};
+
 const DASHBOARDS = {
   academic: {
     title: "Academic workspace",
@@ -73,30 +82,50 @@ const SECTIONS = [
   },
   {
     id: "comp-2",
-    label: "Comp 2",
+    label: "My Bookings",
     placement: "quick",
-    title: "Comp 2",
-    description: "Placeholder list for the second future module.",
-    searchPlaceholder: "Search comp 2...",
-    buttonLabel: "Add Item",
+    title: "My Bookings",
+    description: "Placeholder list for the bookings module.",
+    searchPlaceholder: "Search bookings...",
+    buttonLabel: "Bookings",
     items: [
-      { code: "C2", name: "Comp 2 Item 1", description: "First placeholder item for this future screen." },
-      { code: "C2", name: "Comp 2 Item 2", description: "Second placeholder item for this future screen." },
-      { code: "C2", name: "Comp 2 Item 3", description: "Third placeholder item for this future screen." },
+      { code: "BK", name: "My Bookings", description: "Bookings module placeholder." },
     ],
   },
   {
     id: "comp-3",
-    label: "Comp 3",
+    label: "Book Resource",
     placement: "quick",
-    title: "Comp 3",
-    description: "Placeholder list for the third future module.",
-    searchPlaceholder: "Search comp 3...",
-    buttonLabel: "Add Item",
+    title: "Book Resource",
+    description: "Placeholder list for the resource booking module.",
+    searchPlaceholder: "Search resources to book...",
+    buttonLabel: "Book Resource",
     items: [
-      { code: "C3", name: "Comp 3 Item 1", description: "First placeholder item for this future screen." },
-      { code: "C3", name: "Comp 3 Item 2", description: "Second placeholder item for this future screen." },
-      { code: "C3", name: "Comp 3 Item 3", description: "Third placeholder item for this future screen." },
+      { code: "BR", name: "Book Resource", description: "Resource booking module placeholder." },
+    ],
+  },
+  {
+    id: "comp-4",
+    label: "My Tickets",
+    placement: "quick",
+    title: "My Tickets",
+    description: "Placeholder list for the tickets module.",
+    searchPlaceholder: "Search tickets...",
+    buttonLabel: "My Tickets",
+    items: [
+      { code: "MT", name: "My Tickets", description: "Tickets module placeholder." },
+    ],
+  },
+  {
+    id: "comp-5",
+    label: "Raise Ticket",
+    placement: "quick",
+    title: "Raise Ticket",
+    description: "Placeholder list for the raise ticket module.",
+    searchPlaceholder: "Search raised tickets...",
+    buttonLabel: "Raise Ticket",
+    items: [
+      { code: "RT", name: "Raise Ticket", description: "Raise ticket module placeholder." },
     ],
   },
 ];
@@ -460,10 +489,13 @@ function DashboardPage({ activeSection, onLogout, onSectionChange, onThemeToggle
     sections.find((section) => section.id === "comp-1"),
     sections.find((section) => section.id === "comp-2"),
     sections.find((section) => section.id === "comp-3"),
+    sections.find((section) => section.id === "comp-4"),
+    sections.find((section) => section.id === "comp-5"),
     sections.find((section) => section.id === "settings"),
   ].filter(Boolean);
   const shouldShowHero = activeSection?.id === "dashboard";
   const shouldShowResources = activeSection?.id === "comp-1";
+  const shouldShowBookResource = activeSection?.id === "comp-3";
   const topbarLabel =
     activeSection?.id === "dashboard"
       ? getDashboardLabel(user?.roleName)
@@ -496,12 +528,14 @@ function DashboardPage({ activeSection, onLogout, onSectionChange, onThemeToggle
                 type="button"
               >
                 <span className="nav-icon-wrap nav-icon-plain">
-                  {section.id === "settings" ? (
-                    <SettingsIcon />
-                  ) : section.id === "dashboard" ? (
+                  {section.id === "dashboard" ? (
                     <GridIcon />
                   ) : (
-                    <PlusSquareIcon />
+                    <img
+                      alt=""
+                      className="nav-icon-image"
+                      src={SIDEBAR_ICON_MAP[section.id]}
+                    />
                   )}
                 </span>
                 <span>{section.label}</span>
@@ -593,9 +627,16 @@ function DashboardPage({ activeSection, onLogout, onSectionChange, onThemeToggle
             ) : null}
 
             <section
-              className={`dashboard-content-panel ${shouldShowResources ? "dashboard-content-panel-resources" : "dashboard-content-empty"}`}
+              className={`dashboard-content-panel ${
+                shouldShowResources
+                  ? "dashboard-content-panel-resources"
+                  : shouldShowBookResource
+                    ? "dashboard-content-panel-book-resource"
+                    : "dashboard-content-empty"
+              }`}
             >
               {shouldShowResources ? <ResourcesSection token={token} /> : null}
+              {shouldShowBookResource ? <BookResourceSection /> : null}
             </section>
           </div>
         </div>
@@ -816,6 +857,58 @@ function ResourcesSection({ token }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function BookResourceSection() {
+  const [activeTab, setActiveTab] = useState("type");
+  const activePanel = activeTab === "type" ? <BookByTypePanel /> : <BookByNamePanel />;
+
+  return (
+    <div className="book-resource-shell">
+      <div className="book-resource-tabs" role="tablist" aria-label="Book resource options">
+        <button
+          aria-selected={activeTab === "type"}
+          className={`book-resource-tab ${activeTab === "type" ? "book-resource-tab-active" : ""}`}
+          onClick={() => setActiveTab("type")}
+          role="tab"
+          type="button"
+        >
+          Book by Type
+        </button>
+        <button
+          aria-selected={activeTab === "name"}
+          className={`book-resource-tab ${activeTab === "name" ? "book-resource-tab-active" : ""}`}
+          onClick={() => setActiveTab("name")}
+          role="tab"
+          type="button"
+        >
+          Book by Name
+        </button>
+      </div>
+
+      <div className="book-resource-tab-panel" role="tabpanel" aria-live="polite">
+        {activePanel}
+      </div>
+    </div>
+  );
+}
+
+function BookByTypePanel() {
+  return (
+    <div className="book-resource-panel-card">
+      <h3>Book by Type</h3>
+      <p>This is the Book by Type section. We can add the real booking flow here next.</p>
+    </div>
+  );
+}
+
+function BookByNamePanel() {
+  return (
+    <div className="book-resource-panel-card">
+      <h3>Book by Name</h3>
+      <p>This is the Book by Name section. We can add the real booking flow here next.</p>
     </div>
   );
 }
