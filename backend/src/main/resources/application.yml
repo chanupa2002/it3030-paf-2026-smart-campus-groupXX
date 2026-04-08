@@ -40,6 +40,9 @@ spring:
               - openid
               - profile
               - email
+  web:
+    resources:
+      static-locations: classpath:/static/
 
 server:
   port: 8080
@@ -49,5 +52,7 @@ jwt:
   expiration: ${JWT_EXPIRATION:86400000}
 
 app:
+  upload:
+    dir: uploads/tickets
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI:http://localhost:5173/oauth2/callback}
