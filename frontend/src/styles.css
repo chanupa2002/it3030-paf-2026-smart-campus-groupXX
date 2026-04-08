@@ -1430,6 +1430,11 @@ input { outline: none; }
   width: min(920px, 100%);
 }
 
+.tickets-tabs {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  width: min(920px, 100%);
+}
+
 .book-resource-tab {
   min-height: 56px;
   padding: 0 28px;
