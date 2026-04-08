@@ -611,7 +611,7 @@ function LoginPage({ onLoginSuccess, onThemeToggle, theme }) {
   );
 }
 
-function DashboardPage({ activeSection, onLogout, onSectionChange, onThemeToggle, sections, theme, token, user }) {
+function DashboardPage({ activeSection, group, onLogout, onSectionChange, onThemeToggle, sections, theme, token, user }) {
   const [time, setTime] = useState(() =>
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
   );
@@ -655,6 +655,7 @@ function DashboardPage({ activeSection, onLogout, onSectionChange, onThemeToggle
   const shouldShowAdminBookings = activeView === "admin-bookings";
   const shouldShowAdminTimetable = activeView === "admin-timetable";
   const shouldShowSettingsProfile = activeSection?.id === "settings";
+  const shouldShowNotifications = group !== "admin";
   const topbarLabel =
     activeView === "dashboard"
       ? getDashboardLabel(user?.roleName)
@@ -739,29 +740,33 @@ function DashboardPage({ activeSection, onLogout, onSectionChange, onThemeToggle
             </div>
           </div>
           <div className="topbar-actions" ref={notificationsRef}>
-            <button
-              aria-expanded={isNotificationsOpen}
-              aria-label="Notifications"
-              className={`topbar-icon-button ${isNotificationsOpen ? "topbar-icon-button-active" : ""}`}
-              onClick={() => {
-                setIsProfileMenuOpen(false);
-                setIsNotificationsOpen((value) => !value);
-              }}
-              type="button"
-            >
-              <img alt="" className="topbar-icon-image" src="/assets/icons/bell.png" />
-            </button>
-            <div className={`topbar-notifications-menu ${isNotificationsOpen ? "topbar-notifications-menu-open" : ""}`}>
-              <div className="topbar-notifications-header">
-                <strong>Notifications</strong>
-                <span>Latest updates will appear here.</span>
-              </div>
-              <div className="topbar-notifications-empty">
-                <img alt="" className="topbar-notifications-empty-icon" src="/assets/icons/bell.png" />
-                <strong>No notifications yet</strong>
-                <span>When your notification API is ready, items can appear here.</span>
-              </div>
-            </div>
+            {shouldShowNotifications ? (
+              <>
+                <button
+                  aria-expanded={isNotificationsOpen}
+                  aria-label="Notifications"
+                  className={`topbar-icon-button ${isNotificationsOpen ? "topbar-icon-button-active" : ""}`}
+                  onClick={() => {
+                    setIsProfileMenuOpen(false);
+                    setIsNotificationsOpen((value) => !value);
+                  }}
+                  type="button"
+                >
+                  <img alt="" className="topbar-icon-image" src="/assets/icons/bell.png" />
+                </button>
+                <div className={`topbar-notifications-menu ${isNotificationsOpen ? "topbar-notifications-menu-open" : ""}`}>
+                  <div className="topbar-notifications-header">
+                    <strong>Notifications</strong>
+                    <span>Latest updates will appear here.</span>
+                  </div>
+                  <div className="topbar-notifications-empty">
+                    <img alt="" className="topbar-notifications-empty-icon" src="/assets/icons/bell.png" />
+                    <strong>No notifications yet</strong>
+                    <span>When your notification API is ready, items can appear here.</span>
+                  </div>
+                </div>
+              </>
+            ) : null}
             <ThemeToggle onClick={onThemeToggle} theme={theme} />
           </div>
         </header>
@@ -1964,30 +1969,30 @@ function BookResourceSection({ token, user }) {
 }
 
 function MyTicketsSection() {
-  const [activeTab, setActiveTab] = useState("pending");
-  const activePanel = activeTab === "pending" ? <PendingTicketsPanel /> : <SolvedTicketsPanel />;
+  const [activeTab, setActiveTab] = useState("open");
+  const tabs = [
+    { key: "open", label: "Open", panel: <OpenTicketsPanel /> },
+    { key: "in-progress", label: "In Progress", panel: <InProgressTicketsPanel /> },
+    { key: "resolved", label: "Resolved", panel: <ResolvedTicketsPanel /> },
+    { key: "rejected", label: "Rejected", panel: <RejectedTicketsPanel /> },
+  ];
+  const activePanel = tabs.find((tab) => tab.key === activeTab)?.panel || tabs[0].panel;
 
   return (
     <div className="book-resource-shell">
-      <div className="book-resource-tabs" role="tablist" aria-label="My tickets status tabs">
-        <button
-          aria-selected={activeTab === "pending"}
-          className={`book-resource-tab ${activeTab === "pending" ? "book-resource-tab-active" : ""}`}
-          onClick={() => setActiveTab("pending")}
-          role="tab"
-          type="button"
-        >
-          Pending
-        </button>
-        <button
-          aria-selected={activeTab === "solved"}
-          className={`book-resource-tab ${activeTab === "solved" ? "book-resource-tab-active" : ""}`}
-          onClick={() => setActiveTab("solved")}
-          role="tab"
-          type="button"
-        >
-          Solved
-        </button>
+      <div className="book-resource-tabs tickets-tabs" role="tablist" aria-label="My tickets status tabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            aria-selected={activeTab === tab.key}
+            className={`book-resource-tab ${activeTab === tab.key ? "book-resource-tab-active" : ""}`}
+            onClick={() => setActiveTab(tab.key)}
+            role="tab"
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <div className="book-resource-tab-panel" role="tabpanel" aria-live="polite">
@@ -2015,20 +2020,38 @@ function CancelledBookingsPanel() {
   );
 }
 
-function PendingTicketsPanel() {
+function OpenTicketsPanel() {
   return (
     <div className="book-resource-panel-card">
-      <h3>Pending Tickets</h3>
-      <p>Pending tickets display here. We can add the real pending ticket content next.</p>
+      <h3>Open Tickets</h3>
+      <p>Open tickets display here. We can add the real open ticket content next.</p>
     </div>
   );
 }
 
-function SolvedTicketsPanel() {
+function InProgressTicketsPanel() {
   return (
     <div className="book-resource-panel-card">
-      <h3>Solved Tickets</h3>
-      <p>Solved tickets display here. We can add the real solved ticket content next.</p>
+      <h3>In Progress Tickets</h3>
+      <p>In progress tickets display here. We can add the real in progress ticket content next.</p>
+    </div>
+  );
+}
+
+function ResolvedTicketsPanel() {
+  return (
+    <div className="book-resource-panel-card">
+      <h3>Resolved Tickets</h3>
+      <p>Resolved tickets display here. We can add the real resolved ticket content next.</p>
+    </div>
+  );
+}
+
+function RejectedTicketsPanel() {
+  return (
+    <div className="book-resource-panel-card">
+      <h3>Rejected Tickets</h3>
+      <p>Rejected tickets display here. We can add the real rejected ticket content next.</p>
     </div>
   );
 }
