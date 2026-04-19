@@ -364,27 +364,65 @@ export default function TicketManagementPanel({ statusFilter, apiBaseUrl, token,
                         </>
                       )}
 
-                      {/* General Workflow Actions (Technician Only) */}
-                      {user?.roleName?.toLowerCase() === "technician" && allowed.map((nextStatus) => {
-                        if (nextStatus === STATUSES.REJECTED) return null;
-                        return (
-                          <button
-                            key={nextStatus}
-                            className={`book-by-name-clear ticket-action-btn-${(nextStatus || "").replace("_", "-").toLowerCase()}`}
-                            onClick={() =>
-                              setConfirmState({
-                                ticketId: ticket.ticketId,
-                                nextStatus,
-                                title: `Confirm ${ACTION_LABELS[nextStatus]}?`,
-                                message: `Are you sure you want to transition #${ticket.ticketId} to "${STATUS_LABELS[nextStatus]}"?`,
-                              })
-                            }
-                            type="button"
-                          >
-                            {ACTION_LABELS[nextStatus]}
-                          </button>
-                        );
-                      })}
+                      {/* Workflow Actions: Technicians see only assigned-status transitions; admins see workflow transitions (including reopen) */}
+                      {(() => {
+                        const role = user?.roleName?.toLowerCase();
+
+                        // Technician: hide 'Re-open' (OPEN) when ticket is REJECTED, and never show explicit REJECT action here
+                        if (role === "technician") {
+                          const techAllowed = allowed.filter((ns) => {
+                            if (ns === STATUSES.REJECTED) return false; // technicians shouldn't have explicit Reject here
+                            if (ticket.status === STATUSES.REJECTED && ns === STATUSES.OPEN) return false; // disallow Re-open for technicians
+                            return true;
+                          });
+
+                          return techAllowed.map((nextStatus) => (
+                            <button
+                              key={nextStatus}
+                              className={`book-by-name-clear ticket-action-btn-${(nextStatus || "").replace("_", "-").toLowerCase()}`}
+                              onClick={() =>
+                                setConfirmState({
+                                  ticketId: ticket.ticketId,
+                                  nextStatus,
+                                  title: `Confirm ${ACTION_LABELS[nextStatus]}?`,
+                                  message: `Are you sure you want to transition #${ticket.ticketId} to "${STATUS_LABELS[nextStatus]}"?`,
+                                })
+                              }
+                              type="button"
+                            >
+                              {ACTION_LABELS[nextStatus]}
+                            </button>
+                          ));
+                        }
+
+                        // Admin: show workflow transitions. Avoid duplicating the explicit 'Reject' button when ticket is OPEN
+                        if (role === "admin") {
+                          const adminAllowed = allowed.filter((ns) => {
+                            if (ticket.status === STATUSES.OPEN && ns === STATUSES.REJECTED) return false; // Reject already shown above for admins
+                            return true;
+                          });
+
+                          return adminAllowed.map((nextStatus) => (
+                            <button
+                              key={nextStatus}
+                              className={`book-by-name-clear ticket-action-btn-${(nextStatus || "").replace("_", "-").toLowerCase()}`}
+                              onClick={() =>
+                                setConfirmState({
+                                  ticketId: ticket.ticketId,
+                                  nextStatus,
+                                  title: `Confirm ${ACTION_LABELS[nextStatus]}?`,
+                                  message: `Are you sure you want to transition #${ticket.ticketId} to "${STATUS_LABELS[nextStatus]}"?`,
+                                })
+                              }
+                              type="button"
+                            >
+                              {ACTION_LABELS[nextStatus]}
+                            </button>
+                          ));
+                        }
+
+                        return null;
+                      })()}
                     </div>
 
                     {ticket.status === STATUSES.CLOSED && (

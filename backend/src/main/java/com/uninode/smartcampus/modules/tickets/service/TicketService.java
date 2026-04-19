@@ -100,6 +100,30 @@ public class TicketService {
     }
 
     public Page<TicketResponse> getAllTickets(TicketFilterRequest filter, Long userId, boolean isAdmin, boolean isTechnician) {
+        log.debug("getAllTickets called with userId={} isAdmin={} isTechnician={} filterStatus={} filterPriority={} pageNumber={} pageSize={}",
+                userId, isAdmin, isTechnician, filter.getStatus(), filter.getPriority(), filter.getPageNumber(), filter.getPageSize());
+
+        // Prefer authoritative role information from persisted user record when possible
+        boolean resolvedIsAdmin = isAdmin;
+        boolean resolvedIsTechnician = isTechnician;
+        try {
+            if (userId != null) {
+                Optional<User> maybeUser = userRepository.findById(userId);
+                if (maybeUser.isPresent()) {
+                    String persistedRole = null;
+                    if (maybeUser.get().getUserType() != null) persistedRole = maybeUser.get().getUserType().getRoleName();
+                    if (persistedRole != null) {
+                        resolvedIsAdmin = "admin".equalsIgnoreCase(persistedRole.trim());
+                        resolvedIsTechnician = "technician".equalsIgnoreCase(persistedRole.trim());
+                    }
+                } else {
+                    log.warn("No persisted user found for userId={}", userId);
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to resolve persisted role for userId={}: {}", userId, ex.getMessage());
+        }
+
         int pageNumber = filter.getPageNumber() != null ? filter.getPageNumber() : 0;
         int pageSize = filter.getPageSize() != null ? filter.getPageSize() : 10;
         String sortBy = filter.getSortBy() != null ? filter.getSortBy() : "createdAt";
@@ -110,7 +134,7 @@ public class TicketService {
 
         Page<Ticket> tickets;
 
-        if (isAdmin) {
+        if (resolvedIsAdmin) {
             // Admin users can see all tickets with filters
             if (filter.getStatus() != null && filter.getPriority() != null) {
                 tickets = ticketRepository.findByStatusAndPriority(filter.getStatus(), filter.getPriority(), pageable);
@@ -123,7 +147,12 @@ public class TicketService {
             } else {
                 tickets = ticketRepository.findAll(pageable);
             }
-        } else if (isTechnician) {
+        } else if (resolvedIsTechnician) {
+            // Safety: ensure we have a valid userId for technician filtering
+            if (userId == null) {
+                log.warn("Technician request without resolved userId; returning empty page to avoid leaking tickets");
+                return Page.empty(pageable);
+            }
             // Technicians see ONLY tickets assigned to them
             if (filter.getStatus() != null) {
                 tickets = ticketRepository.findByAssignedUserIdAndStatus(userId, filter.getStatus(), pageable);
@@ -131,6 +160,11 @@ public class TicketService {
                 tickets = ticketRepository.findByAssignedUserId(userId, pageable);
             }
         } else {
+            // Safety: ensure we have a valid userId for raised-user filtering
+            if (userId == null) {
+                log.warn("User request without resolved userId; returning empty page to avoid leaking tickets");
+                return Page.empty(pageable);
+            }
             // Other users (Students) see ONLY tickets they raised
             if (filter.getStatus() != null) {
                 tickets = ticketRepository.findByRaisedUserIdAndStatus(userId, filter.getStatus(), pageable);
@@ -139,6 +173,7 @@ public class TicketService {
             }
         }
 
+        log.debug("Returning {} tickets for userId={} (admin={} technician={})", tickets.getTotalElements(), userId, isAdmin, isTechnician);
         return tickets.map(this::mapToResponse);
     }
 
