@@ -1731,8 +1731,16 @@ function DashboardPage({
 
   const greeting = getGreeting();
   const orderedSections = sections;
+  const normalizedRole = normalizeRole(user?.roleName);
   const activeView = activeSection?.view;
   const shouldShowHero = activeView === "dashboard";
+  const shouldShowStudentLecturerDashboard =
+    shouldShowHero &&
+    (normalizedRole === "student" || normalizedRole === "lecturer");
+  const shouldShowAdminDashboard =
+    shouldShowHero && normalizedRole === "admin";
+  const shouldShowTechnicianDashboard =
+    shouldShowHero && normalizedRole === "technician";
   const shouldShowResources = activeView === "resources";
   const shouldShowMyBookings = activeView === "my-bookings";
   const shouldShowBookResource = activeView === "book-resource";
@@ -1742,6 +1750,7 @@ function DashboardPage({
   const shouldShowAdminUsers = activeView === "admin-users";
   const shouldShowAdminBookings = activeView === "admin-bookings";
   const shouldShowAdminTimetable = activeView === "admin-timetable";
+  const shouldShowAdminAnalytics = activeSection?.id === "admin-analytics";
   const shouldShowSettingsProfile = activeSection?.id === "settings";
   const shouldShowNotifications = group !== "admin";
   const topbarLabel =
@@ -1961,7 +1970,11 @@ function DashboardPage({
 
             <section
               className={`dashboard-content-panel ${
-                shouldShowResources
+                shouldShowStudentLecturerDashboard ||
+                shouldShowAdminDashboard ||
+                shouldShowTechnicianDashboard
+                  ? "dashboard-content-panel-dashboard"
+                  : shouldShowResources
                   ? "dashboard-content-panel-resources"
                   : shouldShowAdminResourceManagement
                     ? "dashboard-content-panel-resources"
@@ -1971,6 +1984,8 @@ function DashboardPage({
                         ? "dashboard-content-panel-book-resource"
                         : shouldShowAdminTimetable
                           ? "dashboard-content-panel-resources"
+                          : shouldShowAdminAnalytics
+                            ? "dashboard-content-panel-analytics"
                           : shouldShowSettingsProfile
                             ? "dashboard-content-panel-settings"
                             : shouldShowMyBookings
@@ -1984,11 +1999,62 @@ function DashboardPage({
                                     : "dashboard-content-empty"
               }`}
             >
+              {shouldShowStudentLecturerDashboard ? (
+                <StudentLecturerDashboardSection
+                  notifications={visibleNotifications}
+                  onOpenBookings={() => {
+                    const bookingsSection = sections.find(
+                      (section) => section.view === "my-bookings",
+                    );
+                    if (bookingsSection) {
+                      onSectionChange(bookingsSection.id);
+                    }
+                  }}
+                  onOpenTickets={() => {
+                    const ticketsSection = sections.find(
+                      (section) => section.view === "my-tickets",
+                    );
+                    if (ticketsSection) {
+                      onSectionChange(ticketsSection.id);
+                    }
+                  }}
+                  token={token}
+                  unreadNotificationCount={unreadNotificationCount}
+                  user={user}
+                />
+              ) : null}
+              {shouldShowAdminDashboard ? (
+                <AdminDashboardSection token={token} />
+              ) : null}
+              {shouldShowTechnicianDashboard ? (
+                <TechnicianDashboardSection
+                  notifications={visibleNotifications}
+                  onOpenResources={() => {
+                    const resourcesSection = sections.find(
+                      (section) => section.view === "resources",
+                    );
+                    if (resourcesSection) {
+                      onSectionChange(resourcesSection.id);
+                    }
+                  }}
+                  onOpenTickets={() => {
+                    const ticketsSection = sections.find(
+                      (section) => section.view === "my-tickets",
+                    );
+                    if (ticketsSection) {
+                      onSectionChange(ticketsSection.id);
+                    }
+                  }}
+                  token={token}
+                  unreadNotificationCount={unreadNotificationCount}
+                />
+              ) : null}
               {shouldShowResources ? <ResourcesSection token={token} /> : null}
               {shouldShowAdminResourceManagement ? <AdminResourceManagementSection token={token} /> : null}
               {shouldShowAdminUsers ? <AdminUsersSection token={token} /> : null}
               {shouldShowAdminBookings ? <AdminPendingBookingsPanel apiBaseUrl={API_BASE_URL} token={token} /> : null}
               {shouldShowAdminTimetable ? <AdminTimetablePanel apiBaseUrl={API_BASE_URL} token={token} /> : null}
+              {shouldShowAdminAnalytics ? <AdminAnalyticsSection token={token} /> : null}
               {shouldShowMyBookings ? <MyBookingsSection token={token} user={user} /> : null}
               {shouldShowBookResource ? <BookResourceSection token={token} user={user} /> : null}
               {shouldShowMyTickets ? <MyTicketsSection apiBaseUrl={API_BASE_URL} token={token} user={user} /> : null}
@@ -2000,6 +2066,1810 @@ function DashboardPage({
       </section>
     </main>
   );
+}
+
+function StudentLecturerDashboardSection({
+  notifications,
+  onOpenBookings,
+  onOpenTickets,
+  token,
+  unreadNotificationCount,
+  user,
+}) {
+  const userId = user?.userId || user?.id || null;
+  const [dashboardData, setDashboardData] = useState({
+    approvedBookings: [],
+    pendingBookings: [],
+    tickets: [],
+    loading: true,
+  });
+
+  useEffect(() => {
+    if (!token || !userId) {
+      setDashboardData({
+        approvedBookings: [],
+        pendingBookings: [],
+        tickets: [],
+        loading: false,
+      });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+
+    async function loadDashboardData() {
+      setDashboardData((current) => ({
+        ...current,
+        loading: true,
+      }));
+
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [approvedResponse, pendingResponse, ticketsResponse] =
+          await Promise.allSettled([
+            fetch(`${API_BASE_URL}/api/bookings/ViewApprovedBookings`, {
+              headers,
+              signal: controller.signal,
+            }),
+            fetch(`${API_BASE_URL}/api/bookings/ViewPendingBookings`, {
+              headers,
+              signal: controller.signal,
+            }),
+            fetch(`${API_BASE_URL}/api/tickets?pageNumber=0&pageSize=100`, {
+              headers,
+              signal: controller.signal,
+            }),
+          ]);
+
+        const approvedPayload = await readSettledJson(approvedResponse, []);
+        const pendingPayload = await readSettledJson(pendingResponse, []);
+        const ticketsPayload = await readSettledJson(ticketsResponse, {});
+
+        const approvedBookings = (Array.isArray(approvedPayload)
+          ? approvedPayload
+          : []
+        ).filter((booking) => Number(booking?.user_id) === Number(userId));
+
+        const pendingBookings = (Array.isArray(pendingPayload)
+          ? pendingPayload
+          : []
+        ).filter((booking) => Number(booking?.user_id) === Number(userId));
+
+        const tickets = Array.isArray(ticketsPayload?.content)
+          ? ticketsPayload.content
+          : [];
+
+        setDashboardData({
+          approvedBookings,
+          pendingBookings,
+          tickets,
+          loading: false,
+        });
+      } catch (requestError) {
+        if (requestError.name === "AbortError") {
+          return;
+        }
+
+        setDashboardData({
+          approvedBookings: [],
+          pendingBookings: [],
+          tickets: [],
+          loading: false,
+        });
+      }
+    }
+
+    loadDashboardData();
+    return () => controller.abort();
+  }, [token, userId]);
+
+  const todayKey = getLocalDateKey();
+  const approvedBookings = useMemo(
+    () =>
+      [...dashboardData.approvedBookings].sort(
+        compareBookingsByDateAndFirstSlot,
+      ),
+    [dashboardData.approvedBookings],
+  );
+  const pendingBookings = useMemo(
+    () =>
+      [...dashboardData.pendingBookings].sort(compareBookingsByDateAndFirstSlot),
+    [dashboardData.pendingBookings],
+  );
+  const tickets = useMemo(
+    () =>
+      [...dashboardData.tickets].sort(
+        (left, right) =>
+          new Date(right?.createdAt || 0).getTime() -
+          new Date(left?.createdAt || 0).getTime(),
+      ),
+    [dashboardData.tickets],
+  );
+
+  const todayApprovedBookings = approvedBookings.filter(
+    (booking) => booking?.date === todayKey,
+  );
+  const upcomingApprovedBookings = approvedBookings
+    .filter((booking) => {
+      const bookingDate = parseDashboardDate(booking?.date);
+      const todayDate = parseDashboardDate(todayKey);
+      return bookingDate && todayDate ? bookingDate >= todayDate : false;
+    })
+    .slice(0, 3);
+  const latestPendingBookings = pendingBookings.slice(0, 3);
+  const latestNotifications = notifications.slice(0, 5);
+  const ticketCounts = tickets.reduce(
+    (summary, ticket) => {
+      const status = String(ticket?.status || "").toUpperCase();
+      if (status === "OPEN") summary.open += 1;
+      if (status === "IN_PROGRESS") summary.inProgress += 1;
+      if (status === "RESOLVED") summary.resolved += 1;
+      return summary;
+    },
+    { open: 0, inProgress: 0, resolved: 0 },
+  );
+
+  return (
+    <div className="academic-dashboard-shell">
+      <div className="academic-dashboard-summary-grid">
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Today&apos;s Bookings</span>
+          <strong>{todayApprovedBookings.length}</strong>
+          <p>Approved bookings scheduled for today.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Pending Requests</span>
+          <strong>{pendingBookings.length}</strong>
+          <p>Bookings still waiting for approval.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Open Tickets</span>
+          <strong>{ticketCounts.open}</strong>
+          <p>Support tickets still open on your account.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Unread Alerts</span>
+          <strong>{unreadNotificationCount}</strong>
+          <p>New notifications not opened in the bell panel yet.</p>
+        </article>
+      </div>
+
+      {dashboardData.loading ? (
+        <div className="availability-feedback availability-feedback-neutral">
+          Loading dashboard widgets...
+        </div>
+      ) : (
+        <div className="academic-dashboard-grid">
+          <article className="academic-dashboard-widget academic-dashboard-widget-wide">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Upcoming
+                </span>
+                <h3>Next Approved Bookings</h3>
+              </div>
+              <button
+                className="academic-dashboard-link"
+                onClick={onOpenBookings}
+                type="button"
+              >
+                View all bookings
+              </button>
+            </div>
+
+            {upcomingApprovedBookings.length > 0 ? (
+              <div className="academic-dashboard-list">
+                {upcomingApprovedBookings.map((booking) => (
+                  <article
+                    className="academic-dashboard-list-item"
+                    key={
+                      booking.booking_group_id ||
+                      `${booking.resource_name}-${booking.date}`
+                    }
+                  >
+                    <div>
+                      <strong>
+                        {booking.resource_name ||
+                          `Resource #${booking.resource_id ?? "N/A"}`}
+                      </strong>
+                      <p>{booking.purpose || "No purpose provided"}</p>
+                    </div>
+                    <div className="academic-dashboard-list-meta">
+                      <span>{formatDashboardDate(booking.date)}</span>
+                      <small>{formatDashboardSlots(booking.slots)}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                No approved bookings are scheduled from today onward.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Alerts
+                </span>
+                <h3>Latest Notifications</h3>
+              </div>
+            </div>
+
+            {latestNotifications.length > 0 ? (
+              <div className="academic-dashboard-feed">
+                {latestNotifications.map((notification) => (
+                  <article
+                    className="academic-dashboard-feed-item"
+                    key={notification.notificationId}
+                  >
+                    <strong>
+                      {notification.notificationType || "Notification"}
+                    </strong>
+                    <p>{notification.notification || ""}</p>
+                    <small>
+                      {formatNotificationTime(notification.createdAt)}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                No recent notifications to show yet.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Support
+                </span>
+                <h3>Ticket Snapshot</h3>
+              </div>
+              <button
+                className="academic-dashboard-link"
+                onClick={onOpenTickets}
+                type="button"
+              >
+                Open tickets
+              </button>
+            </div>
+
+            <div className="academic-dashboard-ticket-stats">
+              <div>
+                <span>Open</span>
+                <strong>{ticketCounts.open}</strong>
+              </div>
+              <div>
+                <span>In Progress</span>
+                <strong>{ticketCounts.inProgress}</strong>
+              </div>
+              <div>
+                <span>Resolved</span>
+                <strong>{ticketCounts.resolved}</strong>
+              </div>
+            </div>
+
+            {tickets.length > 0 ? (
+              <div className="academic-dashboard-mini-list">
+                {tickets.slice(0, 3).map((ticket) => (
+                  <article
+                    className="academic-dashboard-mini-item"
+                    key={ticket.ticketId}
+                  >
+                    <strong>
+                      #{ticket.ticketId} {ticket.category || "General"}
+                    </strong>
+                    <p>{ticket.description || "No description provided"}</p>
+                    <small>{formatTicketStatus(ticket.status)}</small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                You have not raised any tickets yet.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Booking Queue
+                </span>
+                <h3>Pending Approval</h3>
+              </div>
+              <button
+                className="academic-dashboard-link"
+                onClick={onOpenBookings}
+                type="button"
+              >
+                Manage bookings
+              </button>
+            </div>
+
+            {latestPendingBookings.length > 0 ? (
+              <div className="academic-dashboard-mini-list">
+                {latestPendingBookings.map((booking) => (
+                  <article
+                    className="academic-dashboard-mini-item"
+                    key={booking.booking_group_id}
+                  >
+                    <strong>
+                      {booking.resource_name ||
+                        `Resource #${booking.resource_id ?? "N/A"}`}
+                    </strong>
+                    <p>{booking.purpose || "No purpose provided"}</p>
+                    <small>
+                      {formatDashboardDate(booking.date)} |{" "}
+                      {formatDashboardSlots(booking.slots)}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                No pending booking requests are waiting right now.
+              </div>
+            )}
+          </article>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminDashboardSection({ token }) {
+  const [dashboardData, setDashboardData] = useState({
+    users: [],
+    resources: [],
+    pendingBookings: [],
+    approvedBookings: [],
+    tickets: [],
+    loading: true,
+  });
+
+  useEffect(() => {
+    if (!token) {
+      setDashboardData({
+        users: [],
+        resources: [],
+        pendingBookings: [],
+        approvedBookings: [],
+        tickets: [],
+        loading: false,
+      });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+
+    async function loadDashboardData() {
+      setDashboardData((current) => ({
+        ...current,
+        loading: true,
+      }));
+
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [
+          usersResponse,
+          resourcesResponse,
+          pendingResponse,
+          approvedResponse,
+          ticketsResponse,
+        ] = await Promise.allSettled([
+          fetch(`${API_BASE_URL}/api/users`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/facilities`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/bookings/ViewPendingBookings`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/bookings/ViewApprovedBookings`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/tickets?pageNumber=0&pageSize=100`, {
+            headers,
+            signal: controller.signal,
+          }),
+        ]);
+
+        const users = await readSettledJson(usersResponse, []);
+        const resources = await readSettledJson(resourcesResponse, []);
+        const pendingBookings = await readSettledJson(pendingResponse, []);
+        const approvedBookings = await readSettledJson(approvedResponse, []);
+        const ticketsPayload = await readSettledJson(ticketsResponse, {});
+
+        setDashboardData({
+          users: Array.isArray(users) ? users : [],
+          resources: Array.isArray(resources) ? resources : [],
+          pendingBookings: Array.isArray(pendingBookings) ? pendingBookings : [],
+          approvedBookings: Array.isArray(approvedBookings)
+            ? approvedBookings
+            : [],
+          tickets: Array.isArray(ticketsPayload?.content)
+            ? ticketsPayload.content
+            : [],
+          loading: false,
+        });
+      } catch (requestError) {
+        if (requestError.name === "AbortError") {
+          return;
+        }
+
+        setDashboardData({
+          users: [],
+          resources: [],
+          pendingBookings: [],
+          approvedBookings: [],
+          tickets: [],
+          loading: false,
+        });
+      }
+    }
+
+    loadDashboardData();
+    return () => controller.abort();
+  }, [token]);
+
+  const activeUsers = dashboardData.users.filter(
+    (user) => user?.active !== false,
+  );
+  const roleCounts = activeUsers.reduce(
+    (summary, currentUser) => {
+      const role = normalizeRole(currentUser?.roleName);
+      if (role === "student") summary.students += 1;
+      if (role === "lecturer") summary.lecturers += 1;
+      if (role === "technician") summary.technicians += 1;
+      if (role === "admin") summary.admins += 1;
+      return summary;
+    },
+    { students: 0, lecturers: 0, technicians: 0, admins: 0 },
+  );
+
+  const resourceCounts = dashboardData.resources.reduce(
+    (summary, resource) => {
+      summary.total += 1;
+      if (resolveResourceAvailable(resource)) {
+        summary.available += 1;
+      } else {
+        summary.unavailable += 1;
+      }
+
+      const type = String(resource?.type || "Other").trim() || "Other";
+      summary.byType[type] = (summary.byType[type] || 0) + 1;
+      return summary;
+    },
+    { total: 0, available: 0, unavailable: 0, byType: {} },
+  );
+
+  const ticketCounts = dashboardData.tickets.reduce(
+    (summary, ticket) => {
+      const status = String(ticket?.status || "").toUpperCase();
+      if (status === "OPEN") summary.open += 1;
+      if (status === "IN_PROGRESS") summary.inProgress += 1;
+      if (status === "RESOLVED") summary.resolved += 1;
+      return summary;
+    },
+    { open: 0, inProgress: 0, resolved: 0 },
+  );
+
+  const pendingBookings = [...dashboardData.pendingBookings].sort(
+    compareBookingsByCreatedAtAsc,
+  );
+  const activeTickets = [...dashboardData.tickets]
+    .filter((ticket) => {
+      const status = String(ticket?.status || "").toUpperCase();
+      return status === "OPEN" || status === "IN_PROGRESS";
+    })
+    .sort(
+      (left, right) =>
+        new Date(right?.createdAt || 0).getTime() -
+        new Date(left?.createdAt || 0).getTime(),
+    )
+    .slice(0, 3);
+  const topResourceTypes = Object.entries(resourceCounts.byType)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 4);
+  const newestUsers = [...activeUsers]
+    .sort(
+      (left, right) =>
+        new Date(right?.createdAt || 0).getTime() -
+        new Date(left?.createdAt || 0).getTime(),
+    )
+    .slice(0, 4);
+
+  return (
+    <div className="academic-dashboard-shell">
+      <div className="academic-dashboard-summary-grid">
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">
+            Pending Bookings
+          </span>
+          <strong>{dashboardData.pendingBookings.length}</strong>
+          <p>Requests waiting for admin approval.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Open Tickets</span>
+          <strong>{ticketCounts.open}</strong>
+          <p>Support issues that still need assignment or action.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Campus Resources</span>
+          <strong>{resourceCounts.total}</strong>
+          <p>Tracked resources currently registered in the system.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Active Users</span>
+          <strong>{activeUsers.length}</strong>
+          <p>Accounts currently active across all user roles.</p>
+        </article>
+      </div>
+
+      {dashboardData.loading ? (
+        <div className="availability-feedback availability-feedback-neutral">
+          Loading dashboard widgets...
+        </div>
+      ) : (
+        <div className="academic-dashboard-grid">
+          <article className="academic-dashboard-widget academic-dashboard-widget-wide">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Queue
+                </span>
+                <h3>Pending Booking Approval Queue</h3>
+              </div>
+            </div>
+
+            {pendingBookings.length > 0 ? (
+              <div className="academic-dashboard-list">
+                {pendingBookings.slice(0, 4).map((booking) => (
+                  <article
+                    className="academic-dashboard-list-item"
+                    key={booking.booking_group_id}
+                  >
+                    <div>
+                      <strong>
+                        {booking.resource_name ||
+                          `Resource #${booking.resource_id ?? "N/A"}`}
+                      </strong>
+                      <p>{booking.purpose || "No purpose provided"}</p>
+                    </div>
+                    <div className="academic-dashboard-list-meta">
+                      <span>{formatDashboardDate(booking.date)}</span>
+                      <small>
+                        User #{booking.user_id ?? "N/A"} |{" "}
+                        {formatDashboardSlots(booking.slots)}
+                      </small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                No pending booking approvals are waiting right now.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Operations
+                </span>
+                <h3>Ticket Operations</h3>
+              </div>
+            </div>
+
+            <div className="academic-dashboard-ticket-stats">
+              <div>
+                <span>Open</span>
+                <strong>{ticketCounts.open}</strong>
+              </div>
+              <div>
+                <span>In Progress</span>
+                <strong>{ticketCounts.inProgress}</strong>
+              </div>
+              <div>
+                <span>Resolved</span>
+                <strong>{ticketCounts.resolved}</strong>
+              </div>
+            </div>
+
+            {activeTickets.length > 0 ? (
+              <div className="academic-dashboard-mini-list">
+                {activeTickets.map((ticket) => (
+                  <article
+                    className="academic-dashboard-mini-item"
+                    key={ticket.ticketId}
+                  >
+                    <strong>
+                      #{ticket.ticketId} {ticket.category || "General"}
+                    </strong>
+                    <p>{ticket.description || "No description provided"}</p>
+                    <small>
+                      {formatTicketStatus(ticket.status)} |{" "}
+                      {ticket.assignedUser?.name || "Unassigned"}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                No active tickets need attention right now.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Resources
+                </span>
+                <h3>Resource Health</h3>
+              </div>
+            </div>
+
+            <div className="academic-dashboard-ticket-stats">
+              <div>
+                <span>Available</span>
+                <strong>{resourceCounts.available}</strong>
+              </div>
+              <div>
+                <span>Unavailable</span>
+                <strong>{resourceCounts.unavailable}</strong>
+              </div>
+              <div>
+                <span>Approved Today</span>
+                <strong>
+                  {
+                    dashboardData.approvedBookings.filter(
+                      (booking) => booking?.date === getLocalDateKey(),
+                    ).length
+                  }
+                </strong>
+              </div>
+            </div>
+
+            {topResourceTypes.length > 0 ? (
+              <div className="academic-dashboard-mini-list">
+                {topResourceTypes.map(([type, count]) => (
+                  <article
+                    className="academic-dashboard-mini-item"
+                    key={type}
+                  >
+                    <strong>{type}</strong>
+                    <p>{count} resource(s) registered in this type.</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                Resource distribution will appear here once resources are available.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Users
+                </span>
+                <h3>User Overview</h3>
+              </div>
+            </div>
+
+            <div className="academic-dashboard-ticket-stats">
+              <div>
+                <span>Students</span>
+                <strong>{roleCounts.students}</strong>
+              </div>
+              <div>
+                <span>Lecturers</span>
+                <strong>{roleCounts.lecturers}</strong>
+              </div>
+              <div>
+                <span>Technicians</span>
+                <strong>{roleCounts.technicians}</strong>
+              </div>
+            </div>
+
+            {newestUsers.length > 0 ? (
+              <div className="academic-dashboard-mini-list">
+                {newestUsers.map((currentUser) => (
+                  <article
+                    className="academic-dashboard-mini-item"
+                    key={currentUser.userId}
+                  >
+                    <strong>{currentUser.name || currentUser.email}</strong>
+                    <p>{currentUser.email || "No email provided"}</p>
+                    <small>
+                      {currentUser.roleName || "User"} |{" "}
+                      {formatDashboardDate(
+                        currentUser.createdAt
+                          ? String(currentUser.createdAt).slice(0, 10)
+                          : "",
+                      )}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                User activity data will appear here once accounts are available.
+              </div>
+            )}
+          </article>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TechnicianDashboardSection({
+  notifications,
+  onOpenResources,
+  onOpenTickets,
+  token,
+  unreadNotificationCount,
+}) {
+  const [dashboardData, setDashboardData] = useState({
+    resources: [],
+    tickets: [],
+    loading: true,
+  });
+
+  useEffect(() => {
+    if (!token) {
+      setDashboardData({
+        resources: [],
+        tickets: [],
+        loading: false,
+      });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+
+    async function loadDashboardData() {
+      setDashboardData((current) => ({
+        ...current,
+        loading: true,
+      }));
+
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [resourcesResponse, ticketsResponse] = await Promise.allSettled([
+          fetch(`${API_BASE_URL}/api/facilities`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/tickets?pageNumber=0&pageSize=100`, {
+            headers,
+            signal: controller.signal,
+          }),
+        ]);
+
+        const resources = await readSettledJson(resourcesResponse, []);
+        const ticketsPayload = await readSettledJson(ticketsResponse, {});
+
+        setDashboardData({
+          resources: Array.isArray(resources) ? resources : [],
+          tickets: Array.isArray(ticketsPayload?.content)
+            ? ticketsPayload.content
+            : [],
+          loading: false,
+        });
+      } catch (requestError) {
+        if (requestError.name === "AbortError") {
+          return;
+        }
+
+        setDashboardData({
+          resources: [],
+          tickets: [],
+          loading: false,
+        });
+      }
+    }
+
+    loadDashboardData();
+    return () => controller.abort();
+  }, [token]);
+
+  const tickets = [...dashboardData.tickets].sort(
+    (left, right) =>
+      new Date(right?.createdAt || 0).getTime() -
+      new Date(left?.createdAt || 0).getTime(),
+  );
+  const ticketCounts = tickets.reduce(
+    (summary, ticket) => {
+      const status = String(ticket?.status || "").toUpperCase();
+      if (status === "OPEN") summary.open += 1;
+      if (status === "IN_PROGRESS") summary.inProgress += 1;
+      if (status === "RESOLVED") summary.resolved += 1;
+      if (status === "REJECTED") summary.rejected += 1;
+      return summary;
+    },
+    { open: 0, inProgress: 0, resolved: 0, rejected: 0 },
+  );
+
+  const activeTickets = tickets.filter((ticket) => {
+    const status = String(ticket?.status || "").toUpperCase();
+    return status === "OPEN" || status === "IN_PROGRESS";
+  });
+  const latestResolvedTickets = tickets
+    .filter(
+      (ticket) => String(ticket?.status || "").toUpperCase() === "RESOLVED",
+    )
+    .slice(0, 3);
+
+  const resourceCounts = dashboardData.resources.reduce(
+    (summary, resource) => {
+      summary.total += 1;
+      if (resolveResourceAvailable(resource)) {
+        summary.available += 1;
+      } else {
+        summary.unavailable += 1;
+      }
+
+      const type = String(resource?.type || "Other").trim() || "Other";
+      summary.byType[type] = (summary.byType[type] || 0) + 1;
+      return summary;
+    },
+    { total: 0, available: 0, unavailable: 0, byType: {} },
+  );
+
+  const topResourceTypes = Object.entries(resourceCounts.byType)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 4);
+  const latestNotifications = notifications.slice(0, 5);
+
+  return (
+    <div className="academic-dashboard-shell">
+      <div className="academic-dashboard-summary-grid">
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">
+            Assigned Active Tickets
+          </span>
+          <strong>{activeTickets.length}</strong>
+          <p>Tickets currently waiting for your action or progress update.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Resolved Tickets</span>
+          <strong>{ticketCounts.resolved}</strong>
+          <p>Tickets you can move toward closure after resolution.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">
+            Available Resources
+          </span>
+          <strong>{resourceCounts.available}</strong>
+          <p>Campus resources currently marked available in the system.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Unread Alerts</span>
+          <strong>{unreadNotificationCount}</strong>
+          <p>New ticket-related notifications not opened yet.</p>
+        </article>
+      </div>
+
+      {dashboardData.loading ? (
+        <div className="availability-feedback availability-feedback-neutral">
+          Loading dashboard widgets...
+        </div>
+      ) : (
+        <div className="academic-dashboard-grid">
+          <article className="academic-dashboard-widget academic-dashboard-widget-wide">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Work Queue
+                </span>
+                <h3>Your Active Ticket Queue</h3>
+              </div>
+              <button
+                className="academic-dashboard-link"
+                onClick={onOpenTickets}
+                type="button"
+              >
+                Open tickets
+              </button>
+            </div>
+
+            {activeTickets.length > 0 ? (
+              <div className="academic-dashboard-list">
+                {activeTickets.slice(0, 4).map((ticket) => (
+                  <article
+                    className="academic-dashboard-list-item"
+                    key={ticket.ticketId}
+                  >
+                    <div>
+                      <strong>
+                        #{ticket.ticketId} {ticket.category || "General"}
+                      </strong>
+                      <p>{ticket.description || "No description provided"}</p>
+                    </div>
+                    <div className="academic-dashboard-list-meta">
+                      <span>{formatTicketStatus(ticket.status)}</span>
+                      <small>
+                        {ticket.resource?.name || "Unknown resource"} |{" "}
+                        {ticket.priority || "Unknown priority"}
+                      </small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                No active assigned tickets are waiting right now.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Alerts
+                </span>
+                <h3>Latest Notifications</h3>
+              </div>
+            </div>
+
+            {latestNotifications.length > 0 ? (
+              <div className="academic-dashboard-feed">
+                {latestNotifications.map((notification) => (
+                  <article
+                    className="academic-dashboard-feed-item"
+                    key={notification.notificationId}
+                  >
+                    <strong>
+                      {notification.notificationType || "Notification"}
+                    </strong>
+                    <p>{notification.notification || ""}</p>
+                    <small>
+                      {formatNotificationTime(notification.createdAt)}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                No recent technician alerts to show yet.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Status
+                </span>
+                <h3>Ticket Snapshot</h3>
+              </div>
+            </div>
+
+            <div className="academic-dashboard-ticket-stats">
+              <div>
+                <span>Open</span>
+                <strong>{ticketCounts.open}</strong>
+              </div>
+              <div>
+                <span>In Progress</span>
+                <strong>{ticketCounts.inProgress}</strong>
+              </div>
+              <div>
+                <span>Resolved</span>
+                <strong>{ticketCounts.resolved}</strong>
+              </div>
+            </div>
+
+            {latestResolvedTickets.length > 0 ? (
+              <div className="academic-dashboard-mini-list">
+                {latestResolvedTickets.map((ticket) => (
+                  <article
+                    className="academic-dashboard-mini-item"
+                    key={ticket.ticketId}
+                  >
+                    <strong>
+                      #{ticket.ticketId} {ticket.category || "General"}
+                    </strong>
+                    <p>{ticket.description || "No description provided"}</p>
+                    <small>
+                      Resolved |{" "}
+                      {ticket.resource?.name || "Unknown resource"}
+                    </small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                No resolved tickets are listed yet.
+              </div>
+            )}
+          </article>
+
+          <article className="academic-dashboard-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Resources
+                </span>
+                <h3>Resource Overview</h3>
+              </div>
+              <button
+                className="academic-dashboard-link"
+                onClick={onOpenResources}
+                type="button"
+              >
+                Browse resources
+              </button>
+            </div>
+
+            <div className="academic-dashboard-ticket-stats">
+              <div>
+                <span>Total</span>
+                <strong>{resourceCounts.total}</strong>
+              </div>
+              <div>
+                <span>Available</span>
+                <strong>{resourceCounts.available}</strong>
+              </div>
+              <div>
+                <span>Unavailable</span>
+                <strong>{resourceCounts.unavailable}</strong>
+              </div>
+            </div>
+
+            {topResourceTypes.length > 0 ? (
+              <div className="academic-dashboard-mini-list">
+                {topResourceTypes.map(([type, count]) => (
+                  <article
+                    className="academic-dashboard-mini-item"
+                    key={type}
+                  >
+                    <strong>{type}</strong>
+                    <p>{count} resource(s) currently tracked.</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="academic-dashboard-empty">
+                Resource data will appear here once resources are available.
+              </div>
+            )}
+          </article>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminAnalyticsSection({ token }) {
+  const [analyticsData, setAnalyticsData] = useState({
+    resources: [],
+    bookings: [],
+    tickets: [],
+    loading: true,
+  });
+  const [timeWindow, setTimeWindow] = useState("30");
+  const [bookingDateMode, setBookingDateMode] = useState("booking-date");
+  const [resourceTypeFilter, setResourceTypeFilter] = useState("all");
+
+  useEffect(() => {
+    if (!token) {
+      setAnalyticsData({
+        resources: [],
+        bookings: [],
+        tickets: [],
+        loading: false,
+      });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+
+    async function loadAnalyticsData() {
+      setAnalyticsData((current) => ({
+        ...current,
+        loading: true,
+      }));
+
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [
+          resourcesResponse,
+          pendingResponse,
+          approvedResponse,
+          rejectedResponse,
+          cancelledResponse,
+          ticketsResponse,
+        ] = await Promise.allSettled([
+          fetch(`${API_BASE_URL}/api/facilities`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/bookings/ViewPendingBookings`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/bookings/ViewApprovedBookings`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/bookings/ViewRejectedBookings`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/bookings/ViewCancelledBookings`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/tickets?pageNumber=0&pageSize=100`, {
+            headers,
+            signal: controller.signal,
+          }),
+        ]);
+
+        const resources = await readSettledJson(resourcesResponse, []);
+        const pendingBookings = await readSettledJson(pendingResponse, []);
+        const approvedBookings = await readSettledJson(approvedResponse, []);
+        const rejectedBookings = await readSettledJson(rejectedResponse, []);
+        const cancelledBookings = await readSettledJson(cancelledResponse, []);
+        const ticketsPayload = await readSettledJson(ticketsResponse, {});
+
+        setAnalyticsData({
+          resources: Array.isArray(resources) ? resources : [],
+          bookings: [
+            ...mergeBookingsWithStatus(pendingBookings, "Pending"),
+            ...mergeBookingsWithStatus(approvedBookings, "Approved"),
+            ...mergeBookingsWithStatus(rejectedBookings, "Rejected"),
+            ...mergeBookingsWithStatus(cancelledBookings, "Cancelled"),
+          ],
+          tickets: Array.isArray(ticketsPayload?.content)
+            ? ticketsPayload.content
+            : [],
+          loading: false,
+        });
+      } catch (requestError) {
+        if (requestError.name === "AbortError") {
+          return;
+        }
+
+        setAnalyticsData({
+          resources: [],
+          bookings: [],
+          tickets: [],
+          loading: false,
+        });
+      }
+    }
+
+    loadAnalyticsData();
+    return () => controller.abort();
+  }, [token]);
+
+  const resourceTypes = useMemo(
+    () =>
+      [
+        ...new Set(
+          analyticsData.resources
+            .map((resource) => String(resource?.type || "").trim())
+            .filter(Boolean),
+        ),
+      ].sort((left, right) => left.localeCompare(right)),
+    [analyticsData.resources],
+  );
+
+  const resourceTypeByName = useMemo(
+    () =>
+      new Map(
+        analyticsData.resources.map((resource) => [
+          normalizeLookup(resource?.name),
+          String(resource?.type || "").trim(),
+        ]),
+      ),
+    [analyticsData.resources],
+  );
+
+  const filteredResources = analyticsData.resources.filter((resource) => {
+    if (resourceTypeFilter === "all") return true;
+    return normalizeLookup(resource?.type) === normalizeLookup(resourceTypeFilter);
+  });
+
+  const filteredBookings = analyticsData.bookings.filter((booking) => {
+    if (
+      resourceTypeFilter !== "all" &&
+      normalizeLookup(
+        resourceTypeByName.get(normalizeLookup(booking?.resource_name)) || "",
+      ) !== normalizeLookup(resourceTypeFilter)
+    ) {
+      return false;
+    }
+
+    const dateValue =
+      bookingDateMode === "request-date" ? booking?.created_at : booking?.date;
+    return isWithinTimeWindow(dateValue, timeWindow, bookingDateMode === "booking-date");
+  });
+
+  const filteredTickets = analyticsData.tickets.filter((ticket) => {
+    if (
+      resourceTypeFilter !== "all" &&
+      normalizeLookup(ticket?.resource?.type) !== normalizeLookup(resourceTypeFilter)
+    ) {
+      return false;
+    }
+
+    return isWithinTimeWindow(ticket?.createdAt, timeWindow, false);
+  });
+
+  const bookingStatusData = [
+    {
+      label: "Pending",
+      value: filteredBookings.filter(
+        (booking) => normalizeLookup(booking.analyticsStatus) === "pending",
+      ).length,
+      color: "#4f46e5",
+    },
+    {
+      label: "Approved",
+      value: filteredBookings.filter(
+        (booking) => normalizeLookup(booking.analyticsStatus) === "approved",
+      ).length,
+      color: "#0f766e",
+    },
+    {
+      label: "Rejected",
+      value: filteredBookings.filter(
+        (booking) => normalizeLookup(booking.analyticsStatus) === "rejected",
+      ).length,
+      color: "#ef4444",
+    },
+    {
+      label: "Cancelled",
+      value: filteredBookings.filter(
+        (booking) => normalizeLookup(booking.analyticsStatus) === "cancelled",
+      ).length,
+      color: "#f97316",
+    },
+  ];
+
+  const peakHourData = Array.from({ length: 12 }, (_, index) => {
+    const slot = index + 8;
+    const value = filteredBookings.reduce((total, booking) => {
+      const slots = Array.isArray(booking?.slots) ? booking.slots : [];
+      return total + slots.filter((currentSlot) => Number(currentSlot) === slot).length;
+    }, 0);
+
+    return {
+      label: `${slot}:00`,
+      value,
+      color: "#2563eb",
+    };
+  });
+
+  const topResourcesData = Object.entries(
+    filteredBookings.reduce((summary, booking) => {
+      const key =
+        booking?.resource_name ||
+        `Resource #${booking?.resource_id ?? booking?.booking_group_id ?? "N/A"}`;
+      summary[key] = (summary[key] || 0) + 1;
+      return summary;
+    }, {}),
+  )
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 6)
+    .map(([label, value]) => ({
+      label,
+      value,
+      color: "#7c3aed",
+    }));
+
+  const weekdayBookingData = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+    (label, index) => ({
+      label,
+      value: filteredBookings.filter((booking) => {
+        const targetDate =
+          bookingDateMode === "request-date" ? booking?.created_at : booking?.date;
+        const parsed = parseAnalyticsDate(targetDate, bookingDateMode === "booking-date");
+        return parsed ? parsed.getDay() === index : false;
+      }).length,
+      color: "#14b8a6",
+    }),
+  );
+
+  const ticketStatusData = [
+    { label: "Open", value: 0, color: "#ef4444" },
+    { label: "In Progress", value: 0, color: "#f97316" },
+    { label: "Resolved", value: 0, color: "#22c55e" },
+    { label: "Rejected", value: 0, color: "#64748b" },
+    { label: "Closed", value: 0, color: "#2563eb" },
+  ].map((item) => ({
+    ...item,
+    value: filteredTickets.filter(
+      (ticket) => normalizeLookup(ticket?.status) === normalizeLookup(item.label),
+    ).length,
+  }));
+
+  const ticketPriorityData = [
+    { label: "High", value: 0, color: "#ef4444" },
+    { label: "Medium", value: 0, color: "#f59e0b" },
+    { label: "Low", value: 0, color: "#22c55e" },
+  ].map((item) => ({
+    ...item,
+    value: filteredTickets.filter(
+      (ticket) => normalizeLookup(ticket?.priority) === normalizeLookup(item.label),
+    ).length,
+  }));
+
+  const resourceAvailabilityData = Object.entries(
+    filteredResources.reduce((summary, resource) => {
+      const type = String(resource?.type || "Other").trim() || "Other";
+      if (!summary[type]) {
+        summary[type] = { available: 0, unavailable: 0 };
+      }
+
+      if (resolveResourceAvailable(resource)) {
+        summary[type].available += 1;
+      } else {
+        summary[type].unavailable += 1;
+      }
+      return summary;
+    }, {}),
+  ).map(([label, value]) => ({
+    label,
+    available: value.available,
+    unavailable: value.unavailable,
+    total: value.available + value.unavailable,
+  }));
+
+  const totalBookings = filteredBookings.length;
+  const approvedBookings = bookingStatusData.find(
+    (item) => item.label === "Approved",
+  )?.value || 0;
+  const approvalRate = totalBookings
+    ? Math.round((approvedBookings / totalBookings) * 100)
+    : 0;
+  const totalTickets = filteredTickets.length;
+  const openTickets = ticketStatusData.find((item) => item.label === "Open")?.value || 0;
+  const totalResources = filteredResources.length;
+  const availableResources = filteredResources.filter(resolveResourceAvailable).length;
+  const availabilityRate = totalResources
+    ? Math.round((availableResources / totalResources) * 100)
+    : 0;
+
+  const reportSummary = {
+    generatedAt: new Date().toISOString(),
+    filters: {
+      timeWindow,
+      bookingDateMode,
+      resourceTypeFilter,
+    },
+    summary: {
+      totalBookings,
+      approvalRate,
+      totalTickets,
+      openTickets,
+      totalResources,
+      availabilityRate,
+    },
+    bookingStatusData,
+    peakHourData,
+    topResourcesData,
+    weekdayBookingData,
+    ticketStatusData,
+    ticketPriorityData,
+    resourceAvailabilityData,
+  };
+
+  return (
+    <div className="analytics-shell">
+      <div className="analytics-toolbar">
+        <div className="analytics-toolbar-copy">
+          <h2>Operations Analytics</h2>
+          <p>
+            Track booking demand, resource patterns, and ticket activity using
+            current campus data.
+          </p>
+        </div>
+
+        <div className="analytics-toolbar-actions">
+          <label className="analytics-control">
+            <span>Window</span>
+            <select
+              onChange={(event) => setTimeWindow(event.target.value)}
+              value={timeWindow}
+            >
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="all">All time</option>
+            </select>
+          </label>
+
+          <label className="analytics-control">
+            <span>Bookings By</span>
+            <select
+              onChange={(event) => setBookingDateMode(event.target.value)}
+              value={bookingDateMode}
+            >
+              <option value="booking-date">Booking date</option>
+              <option value="request-date">Request created date</option>
+            </select>
+          </label>
+
+          <label className="analytics-control">
+            <span>Resource Type</span>
+            <select
+              onChange={(event) => setResourceTypeFilter(event.target.value)}
+              value={resourceTypeFilter}
+            >
+              <option value="all">All types</option>
+              {resourceTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            className="analytics-export-button"
+            onClick={() =>
+              downloadReportFile(
+                `admin-analytics-${timeWindow}.csv`,
+                buildAnalyticsCsv(reportSummary),
+                "text/csv;charset=utf-8",
+              )
+            }
+            type="button"
+          >
+            Download CSV
+          </button>
+          <button
+            className="analytics-export-button analytics-export-button-secondary"
+            onClick={() =>
+              downloadReportFile(
+                `admin-analytics-${timeWindow}.json`,
+                JSON.stringify(reportSummary, null, 2),
+                "application/json;charset=utf-8",
+              )
+            }
+            type="button"
+          >
+            Download JSON
+          </button>
+        </div>
+      </div>
+
+      <div className="academic-dashboard-summary-grid">
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Bookings</span>
+          <strong>{totalBookings}</strong>
+          <p>{approvalRate}% approval rate in the current view.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Tickets</span>
+          <strong>{totalTickets}</strong>
+          <p>{openTickets} still open in the selected time window.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Resources</span>
+          <strong>{totalResources}</strong>
+          <p>{availabilityRate}% currently marked available.</p>
+        </article>
+        <article className="academic-dashboard-stat-card">
+          <span className="academic-dashboard-stat-label">Top Resource</span>
+          <strong>{topResourcesData[0]?.label || "N/A"}</strong>
+          <p>
+            {topResourcesData[0]?.value || 0} booking(s) in the selected view.
+          </p>
+        </article>
+      </div>
+
+      {analyticsData.loading ? (
+        <div className="availability-feedback availability-feedback-neutral">
+          Loading analytics...
+        </div>
+      ) : (
+        <div className="analytics-stack">
+          <article className="academic-dashboard-widget analytics-feature-widget">
+            <div className="academic-dashboard-widget-head">
+              <div>
+                <span className="academic-dashboard-widget-eyebrow">
+                  Bookings
+                </span>
+                <h3>Bookings by Status</h3>
+              </div>
+            </div>
+            <VerticalBarChart
+              data={bookingStatusData}
+              emptyLabel="No booking status data in the current filter."
+            />
+          </article>
+
+          <div className="analytics-columns">
+            <div className="analytics-column">
+              <article className="academic-dashboard-widget">
+                <div className="academic-dashboard-widget-head">
+                  <div>
+                    <span className="academic-dashboard-widget-eyebrow">
+                      Demand
+                    </span>
+                    <h3>Peak Booking Hours</h3>
+                  </div>
+                </div>
+                <HorizontalBarChart
+                  data={peakHourData.filter((item) => item.value > 0)}
+                  emptyLabel="No booking slot activity found in the current view."
+                />
+              </article>
+
+              <article className="academic-dashboard-widget">
+                <div className="academic-dashboard-widget-head">
+                  <div>
+                    <span className="academic-dashboard-widget-eyebrow">
+                      Tickets
+                    </span>
+                    <h3>Status Distribution</h3>
+                  </div>
+                </div>
+                <DonutChart
+                  data={ticketStatusData}
+                  emptyLabel="No ticket status data in the current view."
+                />
+              </article>
+            </div>
+
+            <div className="analytics-column">
+              <article className="academic-dashboard-widget">
+                <div className="academic-dashboard-widget-head">
+                  <div>
+                    <span className="academic-dashboard-widget-eyebrow">
+                      Resources
+                    </span>
+                    <h3>Top Booked Resources</h3>
+                  </div>
+                </div>
+                <HorizontalBarChart
+                  data={topResourcesData}
+                  emptyLabel="No resource booking activity found in the current view."
+                />
+              </article>
+
+              <article className="academic-dashboard-widget">
+                <div className="academic-dashboard-widget-head">
+                  <div>
+                    <span className="academic-dashboard-widget-eyebrow">
+                      Availability
+                    </span>
+                    <h3>Resource Availability by Type</h3>
+                  </div>
+                </div>
+                <ResourceAvailabilityChart
+                  data={resourceAvailabilityData}
+                  emptyLabel="No resource availability breakdown is available."
+                />
+              </article>
+            </div>
+
+            <div className="analytics-column">
+              <article className="academic-dashboard-widget">
+                <div className="academic-dashboard-widget-head">
+                  <div>
+                    <span className="academic-dashboard-widget-eyebrow">
+                      Trends
+                    </span>
+                    <h3>Bookings by Weekday</h3>
+                  </div>
+                </div>
+                <VerticalBarChart
+                  data={weekdayBookingData}
+                  emptyLabel="No weekday booking trend data available."
+                />
+              </article>
+
+              <article className="academic-dashboard-widget">
+                <div className="academic-dashboard-widget-head">
+                  <div>
+                    <span className="academic-dashboard-widget-eyebrow">
+                      Priority
+                    </span>
+                    <h3>Ticket Priority Mix</h3>
+                  </div>
+                </div>
+                <DonutChart
+                  data={ticketPriorityData}
+                  emptyLabel="No ticket priority data in the current view."
+                />
+              </article>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerticalBarChart({ data, emptyLabel }) {
+  const chartData = data.filter((item) => item.value > 0);
+  const maxValue = Math.max(...chartData.map((item) => item.value), 1);
+
+  if (chartData.length === 0) {
+    return <div className="academic-dashboard-empty">{emptyLabel}</div>;
+  }
+
+  return (
+    <div className="analytics-vertical-chart">
+      <div className="analytics-vertical-bars">
+        {chartData.map((item) => (
+          <div className="analytics-vertical-bar-col" key={item.label}>
+            <span className="analytics-vertical-bar-value">{item.value}</span>
+            <div className="analytics-vertical-bar-track">
+              <div
+                className="analytics-vertical-bar-fill"
+                style={{
+                  height: `${(item.value / maxValue) * 100}%`,
+                  background: `linear-gradient(180deg, ${item.color}, ${item.color}aa)`,
+                }}
+              />
+            </div>
+            <span className="analytics-vertical-bar-label">{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HorizontalBarChart({ data, emptyLabel }) {
+  const chartData = data.filter((item) => item.value > 0);
+  const maxValue = Math.max(...chartData.map((item) => item.value), 1);
+
+  if (chartData.length === 0) {
+    return <div className="academic-dashboard-empty">{emptyLabel}</div>;
+  }
+
+  return (
+    <div className="analytics-horizontal-list">
+      {chartData.map((item) => (
+        <div className="analytics-horizontal-row" key={item.label}>
+          <div className="analytics-horizontal-copy">
+            <strong>{item.label}</strong>
+            <span>{item.value}</span>
+          </div>
+          <div className="analytics-horizontal-track">
+            <div
+              className="analytics-horizontal-fill"
+              style={{
+                width: `${(item.value / maxValue) * 100}%`,
+                background: `linear-gradient(90deg, ${item.color}, ${item.color}bb)`,
+              }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DonutChart({ data, emptyLabel }) {
+  const chartData = data.filter((item) => item.value > 0);
+  const total = chartData.reduce((sum, item) => sum + item.value, 0);
+
+  if (chartData.length === 0 || total === 0) {
+    return <div className="academic-dashboard-empty">{emptyLabel}</div>;
+  }
+
+  let cursor = 0;
+  const segments = chartData
+    .map((item) => {
+      const start = cursor;
+      const end = cursor + (item.value / total) * 100;
+      cursor = end;
+      return `${item.color} ${start}% ${end}%`;
+    })
+    .join(", ");
+
+  return (
+    <div className="analytics-donut-layout">
+      <div
+        className="analytics-donut-ring"
+        style={{
+          background: `conic-gradient(${segments})`,
+        }}
+      >
+        <div className="analytics-donut-center">
+          <strong>{total}</strong>
+          <span>Total</span>
+        </div>
+      </div>
+      <div className="analytics-donut-legend">
+        {chartData.map((item) => (
+          <div className="analytics-donut-legend-item" key={item.label}>
+            <span
+              className="analytics-donut-legend-dot"
+              style={{ background: item.color }}
+            />
+            <div>
+              <strong>{item.label}</strong>
+              <small>
+                {item.value} | {Math.round((item.value / total) * 100)}%
+              </small>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ResourceAvailabilityChart({ data, emptyLabel }) {
+  const chartData = data.filter((item) => item.total > 0);
+  const maxValue = Math.max(...chartData.map((item) => item.total), 1);
+
+  if (chartData.length === 0) {
+    return <div className="academic-dashboard-empty">{emptyLabel}</div>;
+  }
+
+  return (
+    <div className="analytics-resource-grid">
+      {chartData.map((item) => (
+        <article className="analytics-resource-card" key={item.label}>
+          <div className="analytics-resource-head">
+            <strong>{item.label}</strong>
+            <span>{item.total} total</span>
+          </div>
+          <div className="analytics-resource-stack">
+            <div
+              className="analytics-resource-stack-available"
+              style={{
+                width: `${(item.available / maxValue) * 100}%`,
+              }}
+            />
+            <div
+              className="analytics-resource-stack-unavailable"
+              style={{
+                width: `${(item.unavailable / maxValue) * 100}%`,
+              }}
+            />
+          </div>
+          <div className="analytics-resource-meta">
+            <small>Available: {item.available}</small>
+            <small>Unavailable: {item.unavailable}</small>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+async function readSettledJson(result, fallbackValue) {
+  if (result?.status !== "fulfilled") {
+    return fallbackValue;
+  }
+
+  const response = result.value;
+  const payload = await response.json().catch(() => fallbackValue);
+  return response.ok ? payload : fallbackValue;
 }
 
 function ResourcesSection({ token }) {
@@ -3907,6 +5777,213 @@ function getResourceMark(type) {
     .replace(/[^A-Za-z0-9]/g, "")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDashboardDate(value) {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getBookingFirstSlot(booking) {
+  if (!Array.isArray(booking?.slots) || booking.slots.length === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const values = booking.slots
+    .map((slot) => Number(slot))
+    .filter((slot) => Number.isFinite(slot))
+    .sort((left, right) => left - right);
+
+  return values[0] ?? Number.POSITIVE_INFINITY;
+}
+
+function compareBookingsByDateAndFirstSlot(left, right) {
+  const leftDate = parseDashboardDate(left?.date)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+  const rightDate =
+    parseDashboardDate(right?.date)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+
+  if (leftDate !== rightDate) {
+    return leftDate - rightDate;
+  }
+
+  return getBookingFirstSlot(left) - getBookingFirstSlot(right);
+}
+
+function compareBookingsByCreatedAtAsc(left, right) {
+  return (
+    new Date(left?.created_at || 0).getTime() -
+    new Date(right?.created_at || 0).getTime()
+  );
+}
+
+function formatDashboardDate(value) {
+  if (!value) return "No date selected";
+
+  const parsed = parseDashboardDate(value);
+  if (!parsed) return value;
+
+  return parsed.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatDashboardSlots(values) {
+  if (!Array.isArray(values) || values.length === 0) return "Slots not listed";
+
+  return values
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right)
+    .map((value) => `${value}:00-${value + 1}:00`)
+    .join(", ");
+}
+
+function formatTicketStatus(value) {
+  return String(value || "Unknown")
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function resolveResourceAvailable(resource) {
+  const rawAvailability = resource?.available ?? resource?.availability;
+  if (rawAvailability === true || rawAvailability === false) {
+    return rawAvailability;
+  }
+
+  return (
+    rawAvailability === 1 ||
+    rawAvailability === "1" ||
+    rawAvailability === "true"
+  );
+}
+
+function mergeBookingsWithStatus(values, status) {
+  if (!Array.isArray(values)) return [];
+  return values.map((item) => ({
+    ...item,
+    analyticsStatus: status,
+  }));
+}
+
+function normalizeLookup(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function parseAnalyticsDate(value, isDateOnly = false) {
+  if (!value) return null;
+
+  const parsed = isDateOnly
+    ? new Date(`${String(value).slice(0, 10)}T00:00:00`)
+    : new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isWithinTimeWindow(value, windowValue, isDateOnly = false) {
+  if (windowValue === "all") return true;
+
+  const parsed = parseAnalyticsDate(value, isDateOnly);
+  if (!parsed) return false;
+
+  const days = Number(windowValue);
+  if (!Number.isFinite(days) || days <= 0) return true;
+
+  const threshold = new Date();
+  threshold.setHours(0, 0, 0, 0);
+  threshold.setDate(threshold.getDate() - (days - 1));
+
+  return parsed >= threshold;
+}
+
+function buildAnalyticsCsv(report) {
+  const lines = [
+    ["Generated At", report.generatedAt],
+    ["Window", report.filters.timeWindow],
+    ["Bookings By", report.filters.bookingDateMode],
+    ["Resource Type", report.filters.resourceTypeFilter],
+    [],
+    ["Summary"],
+    ["Metric", "Value"],
+    ["Total Bookings", report.summary.totalBookings],
+    ["Approval Rate", `${report.summary.approvalRate}%`],
+    ["Total Tickets", report.summary.totalTickets],
+    ["Open Tickets", report.summary.openTickets],
+    ["Total Resources", report.summary.totalResources],
+    ["Availability Rate", `${report.summary.availabilityRate}%`],
+    [],
+    ["Bookings By Status"],
+    ["Label", "Value"],
+    ...report.bookingStatusData.map((item) => [item.label, item.value]),
+    [],
+    ["Peak Booking Hours"],
+    ["Hour", "Bookings"],
+    ...report.peakHourData.map((item) => [item.label, item.value]),
+    [],
+    ["Top Resources"],
+    ["Resource", "Bookings"],
+    ...report.topResourcesData.map((item) => [item.label, item.value]),
+    [],
+    ["Bookings By Weekday"],
+    ["Weekday", "Bookings"],
+    ...report.weekdayBookingData.map((item) => [item.label, item.value]),
+    [],
+    ["Ticket Status"],
+    ["Status", "Tickets"],
+    ...report.ticketStatusData.map((item) => [item.label, item.value]),
+    [],
+    ["Ticket Priority"],
+    ["Priority", "Tickets"],
+    ...report.ticketPriorityData.map((item) => [item.label, item.value]),
+    [],
+    ["Resource Availability By Type"],
+    ["Type", "Available", "Unavailable", "Total"],
+    ...report.resourceAvailabilityData.map((item) => [
+      item.label,
+      item.available,
+      item.unavailable,
+      item.total,
+    ]),
+  ];
+
+  return lines
+    .map((row) =>
+      row
+        .map((value) => {
+          const cell = String(value ?? "");
+          return /[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
+        })
+        .join(","),
+    )
+    .join("\n");
+}
+
+function downloadReportFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }
 
 function ThemeToggle({ onClick, theme }) {
