@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import java.io.IOException;
+import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -44,8 +45,8 @@ public class TicketController {
     public ResponseEntity<TicketResponse> createTicket(
             @Valid @RequestBody CreateTicketRequest request,
             Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
-        TicketResponse response = ticketService.createTicket(request, user.getUserId());
+        Long userId = resolveUserId(authentication);
+        TicketResponse response = ticketService.createTicket(request, userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -122,25 +123,55 @@ public class TicketController {
             @RequestParam(required = false) String sortBy,
             @RequestParam(required = false) String sortOrder,
             Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
-        boolean isAdmin = authentication.getAuthorities().stream()
+        Long currentUserId = resolveUserId(authentication);
+        // Prefer checking the persisted user's roleName where possible to avoid mismatches
+        String roleName = null;
+        try {
+            roleName = userRepository.findById(currentUserId)
+                .map(u -> u.getUserType() != null ? u.getUserType().getRoleName() : null)
+                .orElse(null);
+        } catch (Exception ex) {
+            // fallback to authorities if repository lookup fails
+            roleName = null;
+        }
+
+        boolean isAdmin = false;
+        boolean isTechnician = false;
+        if (roleName != null) {
+            isAdmin = "admin".equalsIgnoreCase(roleName.trim());
+            isTechnician = "technician".equalsIgnoreCase(roleName.trim());
+        } else {
+            isAdmin = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_ADMIN") || a.getAuthority().equalsIgnoreCase("ADMIN"));
-        boolean isTechnician = authentication.getAuthorities().stream()
+            isTechnician = authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_TECHNICIAN") || a.getAuthority().equalsIgnoreCase("TECHNICIAN"));
+        }
 
         TicketFilterRequest filter = new TicketFilterRequest();
         if (status != null) {
-            filter.setStatus(com.uninode.smartcampus.modules.tickets.entity.TicketStatus.valueOf(status));
+            com.uninode.smartcampus.modules.tickets.entity.TicketStatus parsed = com.uninode.smartcampus.modules.tickets.entity.TicketStatus.fromString(status);
+            filter.setStatus(parsed);
         }
         if (priority != null) {
-            filter.setPriority(com.uninode.smartcampus.modules.tickets.entity.Priority.valueOf(priority));
+            com.uninode.smartcampus.modules.tickets.entity.Priority parsedPriority = com.uninode.smartcampus.modules.tickets.entity.Priority.fromString(priority);
+            filter.setPriority(parsedPriority);
         }
         filter.setPageNumber(pageNumber);
         filter.setPageSize(pageSize);
         filter.setSortBy(sortBy);
         filter.setSortOrder(sortOrder);
 
-        Page<TicketResponse> response = ticketService.getAllTickets(filter, user.getUserId(), isAdmin, isTechnician);
+        log.debug("getAllTickets called by userId={} isAdmin={} isTechnician={} authorities={} statusParam={} priorityParam={} parsedStatus={} parsedPriority={}",
+            currentUserId,
+            isAdmin,
+            isTechnician,
+            authentication.getAuthorities(),
+            status,
+            priority,
+            filter.getStatus(),
+            filter.getPriority());
+
+        Page<TicketResponse> response = ticketService.getAllTickets(filter, currentUserId, isAdmin, isTechnician);
         return ResponseEntity.ok(response);
     }
 
@@ -153,10 +184,30 @@ public class TicketController {
             @PathVariable Long id,
             @Valid @RequestBody UpdateTicketStatusRequest request,
             Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
-        boolean isAdmin = user.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-        TicketResponse response = ticketService.updateTicketStatus(id, request, user.getUserId(), isAdmin);
+        Long currentUserId = resolveUserId(authentication);
+
+        // Prefer persisted role when available
+        String roleName = null;
+        try {
+            roleName = userRepository.findById(currentUserId)
+                .map(u -> u.getUserType() != null ? u.getUserType().getRoleName() : null)
+                .orElse(null);
+        } catch (Exception ignored) {
+        }
+
+        boolean isAdmin = false;
+        boolean isTechnician = false;
+        if (roleName != null) {
+            isAdmin = "admin".equalsIgnoreCase(roleName.trim());
+            isTechnician = "technician".equalsIgnoreCase(roleName.trim());
+        } else {
+            isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_ADMIN") || a.getAuthority().equalsIgnoreCase("ADMIN"));
+            isTechnician = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_TECHNICIAN") || a.getAuthority().equalsIgnoreCase("TECHNICIAN"));
+        }
+
+        TicketResponse response = ticketService.updateTicketStatus(id, request, currentUserId, isAdmin, isTechnician);
         return ResponseEntity.ok(response);
     }
 
@@ -173,6 +224,35 @@ public class TicketController {
         TicketResponse response = ticketService.assignTechnician(id, request, user.getUserId());
         return ResponseEntity.ok(response);
     }
+
+        /**
+         * Debug endpoint: returns resolved user id and role flags for the current auth.
+         * Use this to verify which user the server thinks is authenticated.
+         */
+        @GetMapping("/whoami")
+        @PreAuthorize("isAuthenticated()")
+        public ResponseEntity<?> whoami(Authentication authentication) {
+        Long currentUserId = resolveUserId(authentication);
+        boolean isAdmin = authentication.getAuthorities().stream()
+            .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_ADMIN") || a.getAuthority().equalsIgnoreCase("ADMIN"));
+        boolean isTechnician = authentication.getAuthorities().stream()
+            .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_TECHNICIAN") || a.getAuthority().equalsIgnoreCase("TECHNICIAN"));
+
+        String persistedRole = null;
+        try {
+            persistedRole = userRepository.findById(currentUserId)
+                .map(u -> u.getUserType() != null ? u.getUserType().getRoleName() : null)
+                .orElse(null);
+        } catch (Exception ignored) {}
+
+        return ResponseEntity.ok(Map.of(
+            "currentUserId", currentUserId,
+            "isAdmin", isAdmin,
+            "isTechnician", isTechnician,
+            "persistedRole", persistedRole,
+            "authorities", authentication.getAuthorities()
+        ));
+        }
 
     /**
      * Add resolution notes (assigned technician only)

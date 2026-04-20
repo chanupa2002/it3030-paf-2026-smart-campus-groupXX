@@ -54,6 +54,8 @@ export default function RaiseTicketPanel({ apiBaseUrl, token, userId }) {
   const [errorDialog, setErrorDialog] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
 
+  const normalizedContactNumber = contactNumber.replace(/\D/g, "");
+
   // Fetch resources on load to populate the dropdown
   useEffect(() => {
     const fetchResources = async () => {
@@ -117,6 +119,11 @@ export default function RaiseTicketPanel({ apiBaseUrl, token, userId }) {
       return;
     }
 
+    if (normalizedContactNumber && !/^\d{10}$/.test(normalizedContactNumber)) {
+      setErrorDialog({ title: "Validation Error", message: "Contact number must be exactly 10 digits." });
+      return;
+    }
+
     if (attachments.length > 3) {
       setErrorDialog({
         title: "Maximum Attachment Limit Reached",
@@ -134,7 +141,7 @@ export default function RaiseTicketPanel({ apiBaseUrl, token, userId }) {
         resourceId: parseInt(selectedResourceId),
         description: description.trim(),
         priority: priority,
-        contactNumber: contactNumber.trim(),
+        contactNumber: normalizedContactNumber,
         category: category
       };
 
@@ -253,10 +260,13 @@ export default function RaiseTicketPanel({ apiBaseUrl, token, userId }) {
               <span>Contact Number</span>
               <input
                 type="tel"
-                placeholder="How can we reach you?"
+                placeholder="Enter 10-digit contact number"
                 value={contactNumber}
-                onChange={(e) => setContactNumber(e.target.value)}
+                onChange={(e) => setContactNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 disabled={loading}
+                inputMode="numeric"
+                pattern="[0-9]{10}"
+                maxLength={10}
                 style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--line)', background: 'var(--card-bg)', color: 'var(--text)' }}
               />
             </label>
