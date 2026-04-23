@@ -2069,12 +2069,6 @@ function StudentLecturerDashboardSection({
 
   useEffect(() => {
     if (!token || !userId) {
-      setDashboardData({
-        approvedBookings: [],
-        pendingBookings: [],
-        tickets: [],
-        loading: false,
-      });
       return undefined;
     }
 
@@ -2192,30 +2186,45 @@ function StudentLecturerDashboardSection({
     { open: 0, inProgress: 0, resolved: 0 },
   );
 
+  if (dashboardData.loading) {
+    return <SectionLoadingScreen label="Loading dashboard" />;
+  }
+
   return (
     <div className="academic-dashboard-shell">
-      <div className="academic-dashboard-summary-grid">
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Today&apos;s Bookings</span>
-          <strong>{todayApprovedBookings.length}</strong>
-          <p>Approved bookings scheduled for today.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Pending Requests</span>
-          <strong>{pendingBookings.length}</strong>
-          <p>Bookings still waiting for approval.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Open Tickets</span>
-          <strong>{ticketCounts.open}</strong>
-          <p>Support tickets still open on your account.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Unread Alerts</span>
-          <strong>{unreadNotificationCount}</strong>
-          <p>New notifications not opened in the bell panel yet.</p>
-        </article>
-      </div>
+      {dashboardData.loading ? (
+        <DashboardSummaryLoading
+          labels={[
+            "Today's Bookings",
+            "Pending Requests",
+            "Open Tickets",
+            "Unread Alerts",
+          ]}
+        />
+      ) : (
+        <div className="academic-dashboard-summary-grid">
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Today&apos;s Bookings</span>
+            <strong>{todayApprovedBookings.length}</strong>
+            <p>Approved bookings scheduled for today.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Pending Requests</span>
+            <strong>{pendingBookings.length}</strong>
+            <p>Bookings still waiting for approval.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Open Tickets</span>
+            <strong>{ticketCounts.open}</strong>
+            <p>Support tickets still open on your account.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Unread Alerts</span>
+            <strong>{unreadNotificationCount}</strong>
+            <p>New notifications not opened in the bell panel yet.</p>
+          </article>
+        </div>
+      )}
 
       {dashboardData.loading ? (
         <div className="availability-feedback availability-feedback-neutral">
@@ -2419,14 +2428,6 @@ function AdminDashboardSection({ token }) {
 
   useEffect(() => {
     if (!token) {
-      setDashboardData({
-        users: [],
-        resources: [],
-        pendingBookings: [],
-        approvedBookings: [],
-        tickets: [],
-        loading: false,
-      });
       return undefined;
     }
 
@@ -2574,32 +2575,47 @@ function AdminDashboardSection({ token }) {
     )
     .slice(0, 4);
 
+  if (dashboardData.loading) {
+    return <SectionLoadingScreen label="Loading dashboard" />;
+  }
+
   return (
     <div className="academic-dashboard-shell">
-      <div className="academic-dashboard-summary-grid">
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">
-            Pending Bookings
-          </span>
-          <strong>{dashboardData.pendingBookings.length}</strong>
-          <p>Requests waiting for admin approval.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Open Tickets</span>
-          <strong>{ticketCounts.open}</strong>
-          <p>Support issues that still need assignment or action.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Campus Resources</span>
-          <strong>{resourceCounts.total}</strong>
-          <p>Tracked resources currently registered in the system.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Active Users</span>
-          <strong>{activeUsers.length}</strong>
-          <p>Accounts currently active across all user roles.</p>
-        </article>
-      </div>
+      {dashboardData.loading ? (
+        <DashboardSummaryLoading
+          labels={[
+            "Pending Bookings",
+            "Open Tickets",
+            "Campus Resources",
+            "Active Users",
+          ]}
+        />
+      ) : (
+        <div className="academic-dashboard-summary-grid">
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">
+              Pending Bookings
+            </span>
+            <strong>{dashboardData.pendingBookings.length}</strong>
+            <p>Requests waiting for admin approval.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Open Tickets</span>
+            <strong>{ticketCounts.open}</strong>
+            <p>Support issues that still need assignment or action.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Campus Resources</span>
+            <strong>{resourceCounts.total}</strong>
+            <p>Tracked resources currently registered in the system.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Active Users</span>
+            <strong>{activeUsers.length}</strong>
+            <p>Accounts currently active across all user roles.</p>
+          </article>
+        </div>
+      )}
 
       {dashboardData.loading ? (
         <div className="availability-feedback availability-feedback-neutral">
@@ -2820,11 +2836,6 @@ function TechnicianDashboardSection({
 
   useEffect(() => {
     if (!token) {
-      setDashboardData({
-        resources: [],
-        tickets: [],
-        loading: false,
-      });
       return undefined;
     }
 
@@ -2924,34 +2935,49 @@ function TechnicianDashboardSection({
     .slice(0, 4);
   const latestNotifications = notifications.slice(0, 5);
 
+  if (dashboardData.loading) {
+    return <SectionLoadingScreen label="Loading dashboard" />;
+  }
+
   return (
     <div className="academic-dashboard-shell">
-      <div className="academic-dashboard-summary-grid">
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">
-            Assigned Active Tickets
-          </span>
-          <strong>{activeTickets.length}</strong>
-          <p>Tickets currently waiting for your action or progress update.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Resolved Tickets</span>
-          <strong>{ticketCounts.resolved}</strong>
-          <p>Tickets you can move toward closure after resolution.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">
-            Available Resources
-          </span>
-          <strong>{resourceCounts.available}</strong>
-          <p>Campus resources currently marked available in the system.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Unread Alerts</span>
-          <strong>{unreadNotificationCount}</strong>
-          <p>New ticket-related notifications not opened yet.</p>
-        </article>
-      </div>
+      {dashboardData.loading ? (
+        <DashboardSummaryLoading
+          labels={[
+            "Assigned Active Tickets",
+            "Resolved Tickets",
+            "Available Resources",
+            "Unread Alerts",
+          ]}
+        />
+      ) : (
+        <div className="academic-dashboard-summary-grid">
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">
+              Assigned Active Tickets
+            </span>
+            <strong>{activeTickets.length}</strong>
+            <p>Tickets currently waiting for your action or progress update.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Resolved Tickets</span>
+            <strong>{ticketCounts.resolved}</strong>
+            <p>Tickets you can move toward closure after resolution.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">
+              Available Resources
+            </span>
+            <strong>{resourceCounts.available}</strong>
+            <p>Campus resources currently marked available in the system.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Unread Alerts</span>
+            <strong>{unreadNotificationCount}</strong>
+            <p>New ticket-related notifications not opened yet.</p>
+          </article>
+        </div>
+      )}
 
       {dashboardData.loading ? (
         <div className="availability-feedback availability-feedback-neutral">
@@ -3159,12 +3185,6 @@ function AdminAnalyticsSection({ token }) {
 
   useEffect(() => {
     if (!token) {
-      setAnalyticsData({
-        resources: [],
-        bookings: [],
-        tickets: [],
-        loading: false,
-      });
       return undefined;
     }
 
@@ -3463,6 +3483,10 @@ function AdminAnalyticsSection({ token }) {
     resourceAvailabilityData,
   };
 
+  if (analyticsData.loading) {
+    return <SectionLoadingScreen label="Loading analytics" />;
+  }
+
   return (
     <div className="analytics-shell">
       <div className="analytics-toolbar">
@@ -3543,30 +3567,36 @@ function AdminAnalyticsSection({ token }) {
         </div>
       </div>
 
-      <div className="academic-dashboard-summary-grid">
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Bookings</span>
-          <strong>{totalBookings}</strong>
-          <p>{approvalRate}% approval rate in the current view.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Tickets</span>
-          <strong>{totalTickets}</strong>
-          <p>{openTickets} still open in the selected time window.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Resources</span>
-          <strong>{totalResources}</strong>
-          <p>{availabilityRate}% currently marked available.</p>
-        </article>
-        <article className="academic-dashboard-stat-card">
-          <span className="academic-dashboard-stat-label">Top Resource</span>
-          <strong>{topResourcesData[0]?.label || "N/A"}</strong>
-          <p>
-            {topResourcesData[0]?.value || 0} booking(s) in the selected view.
-          </p>
-        </article>
-      </div>
+      {analyticsData.loading ? (
+        <DashboardSummaryLoading
+          labels={["Bookings", "Tickets", "Resources", "Top Resource"]}
+        />
+      ) : (
+        <div className="academic-dashboard-summary-grid">
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Bookings</span>
+            <strong>{totalBookings}</strong>
+            <p>{approvalRate}% approval rate in the current view.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Tickets</span>
+            <strong>{totalTickets}</strong>
+            <p>{openTickets} still open in the selected time window.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Resources</span>
+            <strong>{totalResources}</strong>
+            <p>{availabilityRate}% currently marked available.</p>
+          </article>
+          <article className="academic-dashboard-stat-card">
+            <span className="academic-dashboard-stat-label">Top Resource</span>
+            <strong>{topResourcesData[0]?.label || "N/A"}</strong>
+            <p>
+              {topResourcesData[0]?.value || 0} booking(s) in the selected view.
+            </p>
+          </article>
+        </div>
+      )}
 
       {analyticsData.loading ? (
         <div className="availability-feedback availability-feedback-neutral">
@@ -3750,6 +3780,38 @@ function HorizontalBarChart({ data, emptyLabel }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function DashboardSummaryLoading({ labels }) {
+  return (
+    <div className="academic-dashboard-summary-grid">
+      {labels.map((label) => (
+        <article className="academic-dashboard-stat-card" key={label}>
+          <span className="academic-dashboard-stat-label">{label}</span>
+          <div className="resources-loading-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <p>Loading live data...</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function SectionLoadingScreen({ label }) {
+  return (
+    <div className="resources-state-card">
+      <div className="resources-loading-dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+      <strong>{label}...</strong>
+      <span>Please wait while the latest data is loading.</span>
     </div>
   );
 }
