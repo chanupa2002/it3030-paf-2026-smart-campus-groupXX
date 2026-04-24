@@ -16,9 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class PendingBookingExpiryNotifier {
 
     private final JdbcTemplate jdbcTemplate;
+    private final BookingSlotService bookingSlotService;
 
-    public PendingBookingExpiryNotifier(JdbcTemplate jdbcTemplate) {
+    public PendingBookingExpiryNotifier(JdbcTemplate jdbcTemplate, BookingSlotService bookingSlotService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.bookingSlotService = bookingSlotService;
     }
 
     @Scheduled(cron = "0 0 * * * *")
@@ -73,51 +75,8 @@ public class PendingBookingExpiryNotifier {
                 continue;
             }
 
-            if (hasExistingExpiryNotification(booking.bookingGroupId(), booking.userId())) {
-                continue;
-            }
-
-            String resourceText = booking.resourceName() == null || booking.resourceName().isBlank()
-                    ? "Resource #" + booking.resourceId()
-                    : booking.resourceName();
-            String slotText = booking.formatSlots();
-            String dateText = booking.bookingDate() == null ? "an unknown day" : booking.bookingDate().toString();
-            String message = "Booking group "
-                    + booking.bookingGroupId()
-                    + " for resource '"
-                    + resourceText
-                    + "' on "
-                    + dateText
-                    + " for slots "
-                    + slotText
-                    + " has expired. Please try again to book it.";
-
-            jdbcTemplate.update(
-                    """
-                            INSERT INTO "Notifications" (notification_type, notification, user_id)
-                            VALUES (?, ?, ?)
-                            """,
-                    "Booking",
-                    message,
-                    booking.userId());
+            bookingSlotService.expirePendingBookingGroup(booking.bookingGroupId(), booking.userId());
         }
-    }
-
-    private boolean hasExistingExpiryNotification(Long bookingGroupId, Long userId) {
-        Boolean exists = jdbcTemplate.query(
-                """
-                        SELECT EXISTS(
-                            SELECT 1
-                            FROM "Notifications" n
-                            WHERE n.user_id = ?
-                              AND LOWER(TRIM(COALESCE(n.notification_type, ''))) = 'booking'
-                              AND n.notification LIKE ?
-                        )
-                        """,
-                rs -> rs.next() ? rs.getBoolean(1) : Boolean.FALSE,
-                userId,
-                "Booking group " + bookingGroupId + " %has expired.%");
-        return Boolean.TRUE.equals(exists);
     }
 
     private record PendingExpiryRow(
@@ -177,21 +136,5 @@ public class PendingBookingExpiryNotifier {
             return bookingDate;
         }
 
-        private Long resourceId() {
-            return resourceId;
-        }
-
-        private String resourceName() {
-            return resourceName;
-        }
-
-        private String formatSlots() {
-            if (slots.isEmpty()) {
-                return "N/A";
-            }
-            return slots.stream()
-                    .map(String::valueOf)
-                    .collect(java.util.stream.Collectors.joining(", "));
-        }
     }
 }
