@@ -260,7 +260,7 @@ function isCancellationLocked(value) {
   if (Number.isNaN(bookingDate.getTime())) return false;
 
   const cancellationDeadline = new Date(bookingDate);
-  cancellationDeadline.setHours(cancellationDeadline.getHours() - 48);
+  cancellationDeadline.setHours(cancellationDeadline.getHours() - 24);
 
   return new Date() >= cancellationDeadline;
 }
