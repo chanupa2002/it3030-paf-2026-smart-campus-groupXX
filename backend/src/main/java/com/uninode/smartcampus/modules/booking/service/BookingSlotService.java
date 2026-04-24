@@ -196,43 +196,10 @@ public class BookingSlotService {
                                         "Cancellation is only allowed more than 48 hours before the booking date.");
                 }
 
-                List<Long> bookingIds = new ArrayList<>();
-                for (CancellableBookingRow booking : bookings) {
-                        bookingIds.add(booking.bookingId());
-                        jdbcTemplate.update(
-                                        """
-                                                        INSERT INTO "Cancelled_Resource_booking"
-                                                                (booking_id, booking_group_id, created_at, attendees, date, timeslot_id, purpose, status, resource_id, user_id)
-                                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                                        """,
-                                        booking.bookingId(),
-                                        request.bookingGroupId(),
-                                        booking.createdAt(),
-                                        booking.attendees(),
-                                        booking.date(),
-                                        booking.timeslotId(),
-                                        booking.purpose(),
-                                        "cancelled",
-                                        booking.resourceId(),
-                                        booking.userId());
-                }
-
-                int deletedRows = jdbcTemplate.update(
-                                """
-                                                DELETE FROM "Resource_booking"
-                                                WHERE COALESCE(booking_group_id, booking_id) = ?
-                                                  AND user_id = ?
-                                                  AND LOWER(TRIM(COALESCE(status, ''))) = 'pending'
-                                                """,
+                List<Long> bookingIds = archivePendingBookingsAsCancelled(
+                                bookings,
                                 request.bookingGroupId(),
                                 request.userId());
-
-                if (deletedRows != bookings.size()) {
-                        throw new ResponseStatusException(
-                                        HttpStatus.NOT_FOUND,
-                                        "No booking group found for booking_group_id '" + request.bookingGroupId()
-                                                        + "' and user_id '" + request.userId() + "'.");
-                }
 
                 String bookingIdsText = bookingIds.stream()
                                 .map(String::valueOf)
@@ -252,6 +219,72 @@ public class BookingSlotService {
                                 request.bookingGroupId(),
                                 List.copyOf(bookingIds),
                                 "Booking group cancelled successfully.");
+        }
+
+        @Transactional
+        public boolean expirePendingBookingGroup(Long bookingGroupId, Long userId) {
+                if (bookingGroupId == null || userId == null) {
+                        return false;
+                }
+
+                List<CancellableBookingRow> bookings = jdbcTemplate.query(
+                                """
+                                                SELECT
+                                                        COALESCE(rb.booking_group_id, rb.booking_id) AS booking_group_id,
+                                                        rb.booking_id,
+                                                        rb.created_at,
+                                                        rb.attendees,
+                                                        rb.date,
+                                                        rb.timeslot_id,
+                                                        rb.purpose,
+                                                        rb.status,
+                                                        rb.resource_id,
+                                                        rb.user_id
+                                                FROM "Resource_booking" rb
+                                                WHERE COALESCE(rb.booking_group_id, rb.booking_id) = ?
+                                                  AND rb.user_id = ?
+                                                  AND LOWER(TRIM(COALESCE(rb.status, ''))) = 'pending'
+                                                ORDER BY rb.booking_id ASC
+                                                """,
+                                (rs, rowNum) -> new CancellableBookingRow(
+                                                rs.getLong("booking_group_id"),
+                                                rs.getLong("booking_id"),
+                                                rs.getObject("created_at", OffsetDateTime.class),
+                                                (Long) rs.getObject("attendees"),
+                                                rs.getObject("date", LocalDate.class),
+                                                (Long) rs.getObject("timeslot_id"),
+                                                rs.getString("purpose"),
+                                                rs.getString("status"),
+                                                (Long) rs.getObject("resource_id"),
+                                                (Long) rs.getObject("user_id")),
+                                bookingGroupId,
+                                userId);
+
+                if (bookings.isEmpty()) {
+                        return false;
+                }
+
+                OffsetDateTime createdAt = bookings.get(0).createdAt();
+                if (createdAt == null || !OffsetDateTime.now().isAfter(createdAt.plusHours(72))) {
+                        return false;
+                }
+
+                List<Long> bookingIds = archivePendingBookingsAsCancelled(bookings, bookingGroupId, userId);
+                String bookingIdsText = bookingIds.stream()
+                                .map(String::valueOf)
+                                .collect(java.util.stream.Collectors.joining(", "));
+
+                jdbcTemplate.update(
+                                """
+                                                INSERT INTO "Notifications" (notification_type, notification, user_id)
+                                                VALUES (?, ?, ?)
+                                                """,
+                                "Booking",
+                                "Your booking group " + bookingGroupId
+                                                + " expired after 72 hours without admin action. Cancelled booking IDs: "
+                                                + bookingIdsText,
+                                userId);
+                return true;
         }
 
         @Transactional(readOnly = true)
@@ -1082,5 +1115,50 @@ public class BookingSlotService {
                 }
 
                 return slot + ":00 - " + (slot + 1) + ":00";
+        }
+
+        private List<Long> archivePendingBookingsAsCancelled(
+                        List<CancellableBookingRow> bookings,
+                        Long bookingGroupId,
+                        Long userId) {
+                List<Long> bookingIds = new ArrayList<>();
+                for (CancellableBookingRow booking : bookings) {
+                        bookingIds.add(booking.bookingId());
+                        jdbcTemplate.update(
+                                        """
+                                                        INSERT INTO "Cancelled_Resource_booking"
+                                                                (booking_id, booking_group_id, created_at, attendees, date, timeslot_id, purpose, status, resource_id, user_id)
+                                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                                        """,
+                                        booking.bookingId(),
+                                        bookingGroupId,
+                                        booking.createdAt(),
+                                        booking.attendees(),
+                                        booking.date(),
+                                        booking.timeslotId(),
+                                        booking.purpose(),
+                                        "cancelled",
+                                        booking.resourceId(),
+                                        booking.userId());
+                }
+
+                int deletedRows = jdbcTemplate.update(
+                                """
+                                                DELETE FROM "Resource_booking"
+                                                WHERE COALESCE(booking_group_id, booking_id) = ?
+                                                  AND user_id = ?
+                                                  AND LOWER(TRIM(COALESCE(status, ''))) = 'pending'
+                                                """,
+                                bookingGroupId,
+                                userId);
+
+                if (deletedRows != bookings.size()) {
+                        throw new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "No booking group found for booking_group_id '" + bookingGroupId
+                                                        + "' and user_id '" + userId + "'.");
+                }
+
+                return bookingIds;
         }
 }
